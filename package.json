@@ -1,0 +1,44 @@
+{
+  "name": "endo-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack --experimental-https",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "0.12.10",
+    "@ffmpeg/util": "0.12.1",
+    "@hookform/resolvers": "^3.9.0",
+    "@shadcn/ui": "latest",
+    "@tiptap/extension-color": "2.10.3",
+    "@tiptap/extension-highlight": "2.10.3",
+    "@tiptap/extension-text-align": "2.10.3",
+    "@tiptap/extension-text-style": "2.10.3",
+    "@tiptap/extension-underline": "2.10.3",
+    "@tiptap/react": "2.10.3",
+    "@tiptap/starter-kit": "2.10.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.400.0",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-hook-form": "^7.52.1",
+    "recharts": "^2.12.7",
+    "sonner": "^1.5.0",
+    "tailwind-merge": "^2.4.0",
+    "typescript": "^5.5.4",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^20.14.11",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.0"
+  }
+}
