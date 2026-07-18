@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, ImageIcon, FileText, Printer } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ImageIcon,
+  FileText,
+  Printer,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -265,8 +271,8 @@ export function PrintPreview({
                   <ChevronUp className="h-4 w-4" />
                 )}
                 <Label className="cursor-pointer">
-                  {t.printPreview.selectImages} ({selectedIds.length}/{maxImages}{" "}
-                  {t.printPreview.max})
+                  {t.printPreview.selectImages} ({selectedIds.length}/
+                  {maxImages} {t.printPreview.max})
                 </Label>
               </button>
               <div className="flex gap-2">
@@ -288,8 +294,8 @@ export function PrintPreview({
                 </Button>
               </div>
             </div>
-            {!imagesCollapsed && (
-              imageMedia.length === 0 ? (
+            {!imagesCollapsed &&
+              (imageMedia.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-card-border p-4 text-sm text-muted-foreground">
                   {t.printPreview.noImages}
                 </p>
@@ -326,8 +332,7 @@ export function PrintPreview({
                     );
                   })}
                 </div>
-              )
-            )}
+              ))}
           </div>
 
           <div className="flex justify-end border-t border-card-border pt-4">

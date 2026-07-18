@@ -58,7 +58,12 @@ import {
   getProcedureLabel,
   toDatetimeLocalValue,
 } from "@/lib/utils";
-import { MediaFile, PatientSessionJoined, ProcedureType, Report } from "@/lib/types";
+import {
+  MediaFile,
+  PatientSessionJoined,
+  ProcedureType,
+  Report,
+} from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 
 const editSchema = z.object({
@@ -129,7 +134,8 @@ export function PatientSessionPage() {
 
   const [editorReport, setEditorReport] = useState<Report | null>(null);
   const [isCreatingReport, setIsCreatingReport] = useState(false);
-  const [selectedPrintReportId, setSelectedPrintReportId] = useState<string>('');
+  const [selectedPrintReportId, setSelectedPrintReportId] =
+    useState<string>("");
 
   const sessionReports = useMemo(() => {
     if (!record?.session?.id) return [];
@@ -137,7 +143,11 @@ export function PatientSessionPage() {
   }, [record?.session?.id, dataVersion]);
 
   const printReport = useMemo(() => {
-    return sessionReports.find((r) => r.id === selectedPrintReportId) || sessionReports[0] || null;
+    return (
+      sessionReports.find((r) => r.id === selectedPrintReportId) ||
+      sessionReports[0] ||
+      null
+    );
   }, [sessionReports, selectedPrintReportId]);
 
   useEffect(() => {
@@ -433,7 +443,9 @@ export function PatientSessionPage() {
           {!editorReport && !isCreatingReport ? (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg font-semibold">Reports Archive ({sessionReports.length})</CardTitle>
+                <CardTitle className="text-lg font-semibold">
+                  Reports Archive ({sessionReports.length})
+                </CardTitle>
                 <Button
                   onClick={() => {
                     setEditorReport(null);
@@ -472,7 +484,13 @@ export function PatientSessionPage() {
                             <TableCell>{r.doctorName}</TableCell>
                             <TableCell>{formatDateTime(r.updatedAt)}</TableCell>
                             <TableCell>
-                              <StatusBadge status={r.status === 'final' ? 'completed' : 'in-progress'} />
+                              <StatusBadge
+                                status={
+                                  r.status === "final"
+                                    ? "completed"
+                                    : "in-progress"
+                                }
+                              />
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
@@ -492,7 +510,9 @@ export function PatientSessionPage() {
                                   size="sm"
                                   onClick={() => {
                                     setSelectedPrintReportId(r.id);
-                                    router.replace(`/patients/${record.session.id}?tab=print`);
+                                    router.replace(
+                                      `/patients/${record.session.id}?tab=print`,
+                                    );
                                   }}
                                   className="h-8 px-2 flex items-center gap-1"
                                 >
@@ -502,17 +522,37 @@ export function PatientSessionPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={async () => {
-                                    if (!confirm("Are you sure you want to delete this report?")) return;
+                                    if (
+                                      !confirm(
+                                        "Are you sure you want to delete this report?",
+                                      )
+                                    )
+                                      return;
                                     try {
                                       await deleteReport(r.id);
-                                      const snapshot = media.find((item) => item.type === 'report' && item.reportId === r.id);
-                                      if (snapshot) await deleteMediaItemAsync(snapshot.id, record.session.id);
-                                      if (selectedPrintReportId === r.id) setSelectedPrintReportId('');
+                                      const snapshot = media.find(
+                                        (item) =>
+                                          item.type === "report" &&
+                                          item.reportId === r.id,
+                                      );
+                                      if (snapshot)
+                                        await deleteMediaItemAsync(
+                                          snapshot.id,
+                                          record.session.id,
+                                        );
+                                      if (selectedPrintReportId === r.id)
+                                        setSelectedPrintReportId("");
                                       await refreshData();
-                                      toast.success("Report deleted successfully.");
+                                      toast.success(
+                                        "Report deleted successfully.",
+                                      );
                                     } catch (error) {
                                       console.error(error);
-                                      toast.error(error instanceof Error ? error.message : "Unable to delete report.");
+                                      toast.error(
+                                        error instanceof Error
+                                          ? error.message
+                                          : "Unable to delete report.",
+                                      );
                                     }
                                   }}
                                   className="h-8 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 hover:border-rose-300"
@@ -566,7 +606,9 @@ export function PatientSessionPage() {
                     }}
                     onOpenPrint={(saved) => {
                       setSelectedPrintReportId(saved.id);
-                      router.replace(`/patients/${record.session.id}?tab=print`);
+                      router.replace(
+                        `/patients/${record.session.id}?tab=print`,
+                      );
                     }}
                   />
                 </TabsContent>
@@ -584,7 +626,9 @@ export function PatientSessionPage() {
                     }}
                     onOpenPrint={(saved) => {
                       setSelectedPrintReportId(saved.id);
-                      router.replace(`/patients/${record.session.id}?tab=print`);
+                      router.replace(
+                        `/patients/${record.session.id}?tab=print`,
+                      );
                     }}
                   />
                 </TabsContent>
@@ -604,10 +648,15 @@ export function PatientSessionPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Select value={selectedPrintReportId} onValueChange={setSelectedPrintReportId}>
+                  <Select
+                    value={selectedPrintReportId}
+                    onValueChange={setSelectedPrintReportId}
+                  >
                     {sessionReports.map((r, idx) => (
                       <SelectItem key={r.id} value={r.id}>
-                        Report #{idx + 1} - Dr. {r.doctorName} ({r.status === 'final' ? 'Final' : 'Draft'}) - {formatDateTime(r.updatedAt)}
+                        Report #{idx + 1} - Dr. {r.doctorName} (
+                        {r.status === "final" ? "Final" : "Draft"}) -{" "}
+                        {formatDateTime(r.updatedAt)}
                       </SelectItem>
                     ))}
                   </Select>
