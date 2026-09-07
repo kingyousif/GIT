@@ -601,8 +601,13 @@ export function PatientSessionPage() {
                     onAfterSave={async (saved) => {
                       setSelectedPrintReportId(saved.id);
                       await refreshData();
-                      setEditorReport(null);
-                      setIsCreatingReport(false);
+                      if (saved.status === 'final') {
+                        setEditorReport(null);
+                        setIsCreatingReport(false);
+                      } else {
+                        setEditorReport(saved);
+                        setIsCreatingReport(false);
+                      }
                     }}
                     onOpenPrint={(saved) => {
                       setSelectedPrintReportId(saved.id);
@@ -621,8 +626,13 @@ export function PatientSessionPage() {
                     onAfterSave={async (saved) => {
                       setSelectedPrintReportId(saved.id);
                       await refreshData();
-                      setEditorReport(null);
-                      setIsCreatingReport(false);
+                      if (saved.status === 'final') {
+                        setEditorReport(null);
+                        setIsCreatingReport(false);
+                      } else {
+                        setEditorReport(saved);
+                        setIsCreatingReport(false);
+                      }
                     }}
                     onOpenPrint={(saved) => {
                       setSelectedPrintReportId(saved.id);

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFieldArray, useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ClipboardCopy, FileOutput, Save } from 'lucide-react';
+import { ClipboardCopy, FileOutput, Save, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,6 +77,10 @@ export function ReportBuilder({
 }) {
   const { t } = useLocale();
   const persistedReportRef = useRef<Report | null>(report ?? null);
+  const currentReportIdRef = useRef<string | undefined>(report?.id);
+  const lastSavedJsonRef = useRef<string>(JSON.stringify(buildInitialValues(session, report)));
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<Date | null>(null);
+
   const templates = useMemo(() => getTemplates().filter((item) => item.procedureType === session.procedureType), [session.procedureType]);
   const [customDiagnosis, setCustomDiagnosis] = useState('');
   const [customRecommendation, setCustomRecommendation] = useState('');
@@ -85,13 +89,18 @@ export function ReportBuilder({
     resolver: zodResolver(reportSchema),
     defaultValues: buildInitialValues(session, report),
   });
-  const { register, handleSubmit, setValue, watch, getValues, control, reset, formState: { errors, isDirty, isSubmitting } } = form;
+  const { register, handleSubmit, setValue, watch, getValues, control, reset, formState: { errors, isSubmitting } } = form;
   const { fields, replace } = useFieldArray({ control, name: 'sections' });
 
   useEffect(() => {
-    persistedReportRef.current = report ?? null;
-    reset(buildInitialValues(session, report));
-  }, [report, reset, session]);
+    // Only reset if switching to a genuinely different report (not on in-place saves)
+    if (report?.id !== currentReportIdRef.current) {
+      currentReportIdRef.current = report?.id;
+      persistedReportRef.current = report ?? null;
+      reset(buildInitialValues(session, report));
+      lastSavedJsonRef.current = JSON.stringify(buildInitialValues(session, report));
+    }
+  }, [report?.id, reset, session]);
 
   const selectedTemplateId = watch('templateUsed');
   const diagnoses = watch('diagnosis');
@@ -124,14 +133,20 @@ export function ReportBuilder({
     status: 'draft' | 'final',
     values = getValues(),
     notifyParent = true,
+    isAutoSave = false,
   ) => {
     const payload = { ...values, status };
     const parsed = reportSchema.safeParse(payload);
     if (!parsed.success) {
-      console.warn('[ReportBuilder] Zod Validation Failed:', parsed.error.format());
-      toast.error(`Validation failed: ${parsed.error.errors.map(e => e.message).join(', ')}`);
+      if (!isAutoSave) {
+        console.warn('[ReportBuilder] Zod Validation Failed:', parsed.error.format());
+        toast.error(`Validation failed: ${parsed.error.errors.map(e => e.message).join(', ')}`);
+      }
       return null;
     }
+
+    // Preserve scroll position so viewport NEVER jumps
+    const savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
 
     try {
       const currentReport = persistedReportRef.current;
@@ -150,20 +165,36 @@ export function ReportBuilder({
         biopsySentTo: parsed.data.biopsySentTo,
         status,
       });
+
       persistedReportRef.current = saved;
-      reset(buildInitialValues(session, saved));
-      // Create / update snapshot in media tab
-      try {
-        await saveReportSnapshot({ patient, session, report: saved, settings });
-      } catch (err) {
+      currentReportIdRef.current = saved.id;
+      lastSavedJsonRef.current = JSON.stringify(values);
+
+      // Create / update snapshot in media tab asynchronously without blocking
+      saveReportSnapshot({ patient, session, report: saved, settings }).catch((err) => {
         console.error('Snapshot failed:', err);
+      });
+
+      if (isAutoSave) {
+        // Silent background save: NO TOAST, NO RESET, NO SCROLL JUMP
+        setLastAutoSavedAt(new Date());
+        return saved;
       }
+
       if (notifyParent) await onAfterSave?.(saved);
       toast.success(status === 'final' ? 'Report finalized successfully.' : 'Draft saved successfully.');
+
+      // Restore scroll position as a guarantee against browser layout shifts
+      if (typeof window !== 'undefined' && Math.abs(window.scrollY - savedScrollY) > 5) {
+        window.scrollTo({ top: savedScrollY, behavior: 'instant' as ScrollBehavior });
+      }
+
       return saved;
     } catch (error) {
       console.error(error);
-      toast.error('Unable to save report.');
+      if (!isAutoSave) {
+        toast.error('Unable to save report.');
+      }
       return null;
     }
   };
@@ -171,12 +202,17 @@ export function ReportBuilder({
   useEffect(() => {
     const timer = window.setInterval(() => {
       const values = getValues();
-      if (values.status === 'final' || !isDirty) return;
-      void persistReport('draft', values, false);
+      if (values.status === 'final' || isLocked) return;
+
+      const currentJson = JSON.stringify(values);
+      // Skip if nothing changed since last save
+      if (currentJson === lastSavedJsonRef.current) return;
+
+      void persistReport('draft', values, false, true);
     }, 30000);
 
     return () => window.clearInterval(timer);
-  }, [getValues, isDirty]);
+  }, [getValues, isLocked]);
 
   const onInvalid = (errors: any) => {
     console.warn('[ReportBuilder] Form validation errors:', errors);
@@ -393,11 +429,11 @@ export function ReportBuilder({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button disabled={isSubmitting} onClick={handleSubmit(async (values) => void persistReport('draft', values), onInvalid)}>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={isSubmitting} onClick={handleSubmit(async (values) => void persistReport('draft', values, true, false), onInvalid)}>
               <Save className="h-4 w-4" /> {t.reportBuilder.saveDraft}
             </Button>
-            <Button variant="outline" disabled={isLocked || isSubmitting} onClick={handleSubmit(async (values) => void persistReport('final', values), onInvalid)}>
+            <Button variant="outline" disabled={isLocked || isSubmitting} onClick={handleSubmit(async (values) => void persistReport('final', values, true, false), onInvalid)}>
               <FileOutput className="h-4 w-4" /> {t.reportBuilder.finalizeReport}
             </Button>
             <Button
@@ -409,7 +445,7 @@ export function ReportBuilder({
                   await onOpenPrint?.(currentReport);
                   return;
                 }
-                const saved = await persistReport('draft', values);
+                const saved = await persistReport('draft', values, false, false);
                 if (saved) await onOpenPrint?.(saved);
               }, onInvalid)}
             >
@@ -418,6 +454,12 @@ export function ReportBuilder({
             <Button variant="outline" onClick={() => copyToClipboard()}>
               <ClipboardCopy className="h-4 w-4" /> {t.reportBuilder.copyClipboard}
             </Button>
+            {lastAutoSavedAt && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 ml-auto">
+                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                Draft autosaved ({lastAutoSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

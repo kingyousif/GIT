@@ -14,6 +14,7 @@ import {
 } from "@/lib/media-db";
 import { MediaFile } from "@/lib/types";
 import { fileToDataUrl } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 import {
   CropConfig,
   createCroppedStream,
@@ -273,19 +274,21 @@ export function useVideoCapture(sessionId: string) {
     }
 
     try {
+      const videoEl = videoRef.current;
+      const track = stream.getVideoTracks()[0];
+      const trackSettings = track?.getSettings();
+
+      // Determine true native stream resolution
+      const sourceW = trackSettings?.width || videoEl.videoWidth || 1920;
+      const sourceH = trackSettings?.height || videoEl.videoHeight || 1080;
+
       const canvas = document.createElement("canvas");
-      const sourceW = videoRef.current.videoWidth || 1920;
-      const sourceH = videoRef.current.videoHeight || 1080;
+      let dataUrl = "";
 
       if (cropConfig.enabled) {
         // Draw cropped (and optionally circle-masked) frame
-        drawCroppedFrame(
-          videoRef.current,
-          canvas,
-          cropConfig,
-          sourceW,
-          sourceH,
-        );
+        drawCroppedFrame(videoEl, canvas, cropConfig, sourceW, sourceH);
+        dataUrl = canvas.toDataURL("image/png");
       } else {
         canvas.width = sourceW;
         canvas.height = sourceH;
@@ -293,11 +296,28 @@ export function useVideoCapture(sessionId: string) {
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
-          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+          // Try native ImageCapture.grabFrame for pristine, blur-free, motion-artifact-free hardware capture
+          let drewBitmap = false;
+          if (typeof window !== "undefined" && "ImageCapture" in window && track) {
+            try {
+              const imageCapture = new (window as any).ImageCapture(track);
+              const bitmap = await imageCapture.grabFrame();
+              ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+              drewBitmap = true;
+            } catch {
+              drewBitmap = false;
+            }
+          }
+
+          if (!drewBitmap) {
+            // High-fidelity direct video element draw
+            ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+          }
         }
+        dataUrl = canvas.toDataURL("image/png");
       }
 
-      const dataUrl = canvas.toDataURL("image/png");
       const device = devices.find((item) => item.deviceId === selectedDevice);
       const imageCount =
         capturedMedia.filter((m) => m.type === "image").length + 1;
@@ -305,6 +325,9 @@ export function useVideoCapture(sessionId: string) {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+      const approxBytes = Math.round((dataUrl.length * 3) / 4);
+
       const media: MediaFile = {
         id,
         sessionId,
@@ -314,10 +337,19 @@ export function useVideoCapture(sessionId: string) {
         source: detectSource(device?.label),
         label: `Image ${imageCount}`,
         capturedAt: new Date().toISOString(),
+        size: approxBytes,
+        isSynced: false,
       };
-      await addMediaItemAsync(media, mediaContext);
-      await syncMedia();
-      toast.success(`Image ${imageCount} saved.`);
+
+      // IMMEDIATELY update UI state (instantaneous, 0ms wait)
+      setCapturedMedia((prev) => [media, ...prev]);
+      toast.success(`Image ${imageCount} captured.`);
+
+      // Persist in background without blocking UI
+      addMediaItemAsync(media, mediaContext).catch((err) =>
+        console.warn("Background local save warning:", err),
+      );
+
       return media;
     } catch (error) {
       console.error(error);
@@ -328,10 +360,10 @@ export function useVideoCapture(sessionId: string) {
     capturedMedia,
     cropConfig,
     devices,
+    mediaContext,
     selectedDevice,
     sessionId,
     stream,
-    syncMedia,
   ]);
 
   const startRecording = useCallback(() => {
@@ -370,9 +402,10 @@ export function useVideoCapture(sessionId: string) {
           }
         }
       }
+      // 6 Mbps bitrate guarantees crisp 1080p medical recordings while preventing client crashes/failures
       const recorder = new MediaRecorder(recordingStream, {
         mimeType: preferredMime,
-        videoBitsPerSecond: 25_000_000,
+        videoBitsPerSecond: 6_000_000,
       });
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
@@ -384,7 +417,7 @@ export function useVideoCapture(sessionId: string) {
           recordingStreamRef.current?.stop();
           recordingStreamRef.current = null;
 
-          const blob = new Blob(chunksRef.current, { type: "video/webm" });
+          const blob = new Blob(chunksRef.current, { type: preferredMime });
           chunksRef.current = []; // Free memory immediately
           const dataUrl = URL.createObjectURL(blob);
           const device = devices.find(
@@ -405,10 +438,18 @@ export function useVideoCapture(sessionId: string) {
             source: detectSource(device?.label),
             label: `Video ${videoCount}`,
             capturedAt: new Date().toISOString(),
+            size: blob.size,
+            isSynced: false,
           };
-          await addMediaItemAsync(media, mediaContext);
-          await syncMedia();
+
+          // IMMEDIATELY update UI state so client device never loses the video
+          setCapturedMedia((prev) => [media, ...prev]);
           toast.success(`Video ${videoCount} saved.`);
+
+          // Persist to local folder asynchronously in background
+          addMediaItemAsync(media, mediaContext).catch((err) =>
+            console.warn("Local storage warning:", err),
+          );
         } catch (error) {
           console.error(error);
           toast.error("Failed to save recorded video.");
@@ -429,10 +470,10 @@ export function useVideoCapture(sessionId: string) {
     capturedMedia,
     cropConfig,
     devices,
+    mediaContext,
     selectedDevice,
     sessionId,
     stream,
-    syncMedia,
   ]);
 
   const stopRecording = useCallback(() => {
@@ -440,44 +481,110 @@ export function useVideoCapture(sessionId: string) {
     setIsRecording(false);
   }, []);
 
+  const markItemSynced = useCallback((mediaId: string, updates?: Partial<MediaFile>) => {
+    setCapturedMedia((prev) =>
+      prev.map((item) =>
+        item.id === mediaId ? { ...item, isSynced: true, ...updates } : item
+      )
+    );
+  }, []);
+
   const uploadFiles = useCallback(
-    async (files: FileList | File[]) => {
+    async (files: FileList | File[], autoSaveToServer = true) => {
       const list = Array.from(files);
-      if (!list.length) return;
+      if (!list.length) return [];
       setIsBusy(true);
+      const newItems: MediaFile[] = [];
+
       try {
         for (const file of list) {
-          const dataUrl = await fileToDataUrl(file);
+          const isVideo = file.type.startsWith("video") || Boolean(file.name.match(/\.(mp4|avi|mov|webm|mkv|m4v|flv|wmv)$/i));
+          const isImage = file.type.startsWith("image") || Boolean(file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i));
+
+          let dataUrl = "";
+          // Small images can be read to base64 for offline portability; larger files or videos use blob URL
+          if (isImage && file.size < 4 * 1024 * 1024) {
+            try {
+              dataUrl = await fileToDataUrl(file);
+            } catch {
+              dataUrl = URL.createObjectURL(file);
+            }
+          } else {
+            dataUrl = URL.createObjectURL(file);
+          }
+
           const id =
             typeof crypto !== "undefined" && "randomUUID" in crypto
               ? crypto.randomUUID()
               : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
           const media: MediaFile = {
             id,
             sessionId,
-            type:
-              file.type.startsWith("video") ||
-              file.name.match(/\.(mp4|avi|mov|webm)$/i)
-                ? "video"
-                : "image",
+            type: isVideo ? "video" : "image",
             dataUrl,
             filename: file.name,
             source: "upload",
-            label: file.name,
+            label: file.name.replace(/\.[^/.]+$/, ""),
             capturedAt: new Date().toISOString(),
+            size: file.size,
+            isSynced: false,
           };
-          await addMediaItemAsync(media, mediaContext);
+
+          // Save to local folder if available
+          await addMediaItemAsync(media, mediaContext).catch(() => {});
+
+          // If autoSaveToServer is true, send directly to main server
+          if (autoSaveToServer) {
+            try {
+              const formData = new FormData();
+              formData.append("sessionId", sessionId);
+              formData.append("mediaId", id);
+              formData.append("type", media.type);
+              formData.append("filename", media.filename);
+              formData.append("source", media.source);
+              formData.append("capturedAt", media.capturedAt);
+              if (media.label) formData.append("label", media.label);
+              if (mediaContext?.patientName) formData.append("patientName", mediaContext.patientName);
+              if (mediaContext?.patientCode) formData.append("patientCode", mediaContext.patientCode);
+              if (mediaContext?.procedureType) formData.append("procedureType", mediaContext.procedureType);
+              if (mediaContext?.scheduledAt) formData.append("scheduledAt", mediaContext.scheduledAt);
+              formData.append("file", file, file.name);
+
+              const res = await apiFetch("/api/media/blob", { method: "POST", body: formData });
+              if (res.ok) {
+                media.isSynced = true;
+              }
+            } catch (err) {
+              console.warn("Failed to auto-upload to server:", err);
+            }
+          }
+
+          newItems.push(media);
         }
-        await syncMedia();
-        toast.success("Media uploaded successfully.");
+
+        setCapturedMedia((prev) => [...newItems, ...prev]);
+        setServerHasData(false);
+
+        const syncedCount = newItems.filter((m) => m.isSynced).length;
+        if (autoSaveToServer && syncedCount === newItems.length) {
+          toast.success(`Added and saved ${newItems.length} media file(s) to server.`);
+        } else if (syncedCount > 0) {
+          toast.success(`Added ${newItems.length} file(s) (${syncedCount} saved to server).`);
+        } else {
+          toast.success(`Added ${newItems.length} media file(s).`);
+        }
+
+        return newItems;
       } catch (error) {
-        console.error(error);
-        toast.error("Failed to upload one or more files.");
+        console.error("Upload files error:", error);
+        toast.error("Failed to add one or more files.");
+        return [];
       } finally {
         setIsBusy(false);
       }
     },
-    [sessionId, syncMedia],
+    [sessionId, mediaContext],
   );
 
   const updateMedia = useCallback(
@@ -543,6 +650,7 @@ export function useVideoCapture(sessionId: string) {
     uploadFiles,
     updateMedia,
     deleteMedia,
+    markItemSynced,
     refreshMedia: syncMedia,
     pullFromServer,
     clearLocalMedia,

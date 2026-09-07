@@ -186,11 +186,11 @@ export async function storageRoutes(app: FastifyInstance) {
 
     try {
       if (key === "endo_patients") {
-        const patients = body as any[];
+        const patients = (Array.isArray(body) ? body : []) as any[];
         await Patient.deleteMany({});
-        if (patients && patients.length > 0) {
+        if (patients.length > 0) {
           await Patient.insertMany(patients.map(p => ({
-            _id: p.id,
+            _id: p.id || p._id || randomUUID(),
             patientCode: p.patientCode,
             fullName: p.fullName,
             age: p.age,
@@ -202,11 +202,11 @@ export async function storageRoutes(app: FastifyInstance) {
           })));
         }
       } else if (key === "endo_sessions") {
-        const sessions = body as any[];
+        const sessions = (Array.isArray(body) ? body : []) as any[];
         await Session.deleteMany({});
-        if (sessions && sessions.length > 0) {
+        if (sessions.length > 0) {
           await Session.insertMany(sessions.map(s => ({
-            _id: s.id,
+            _id: s.id || s._id || randomUUID(),
             patientId: s.patientId,
             procedureType: s.procedureType,
             doctorName: s.doctorName,
@@ -222,11 +222,11 @@ export async function storageRoutes(app: FastifyInstance) {
           })));
         }
       } else if (key === "endo_reports") {
-        const reports = body as any[];
+        const reports = (Array.isArray(body) ? body : []) as any[];
         await Report.deleteMany({});
-        if (reports && reports.length > 0) {
+        if (reports.length > 0) {
           await Report.insertMany(reports.map(r => ({
-            _id: r.id,
+            _id: r.id || r._id || randomUUID(),
             sessionId: r.sessionId,
             doctorName: r.doctorName,
             templateUsed: r.templateUsed,
@@ -244,11 +244,11 @@ export async function storageRoutes(app: FastifyInstance) {
           })));
         }
       } else if (key === "endo_templates") {
-        const templates = body as any[];
+        const templates = (Array.isArray(body) ? body : []) as any[];
         await Template.deleteMany({});
-        if (templates && templates.length > 0) {
+        if (templates.length > 0) {
           await Template.insertMany(templates.map(t => ({
-            _id: t.id,
+            _id: t.id || t._id || randomUUID(),
             name: t.name,
             procedureType: t.procedureType,
             sections: t.sections,

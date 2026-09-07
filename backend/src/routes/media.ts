@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { Media } from '../db/models.js';
 
@@ -95,12 +96,24 @@ export async function mediaRoutes(app: FastifyInstance) {
     const items = await Media.find({ sessionId }).lean();
     const result = await Promise.all(items.map(async (m: any) => {
       const filePath = path.join(config.mediaDir, m.storagePath);
-      let dataUrl = '';
+      let dataUrl = `/api/media/blob?sessionId=${encodeURIComponent(sessionId)}&mediaId=${encodeURIComponent(m._id.toString())}`;
       if (fs.existsSync(filePath)) {
-        const buffer = await fsp.readFile(filePath);
-        dataUrl = bufferToDataUrl(buffer, m.mimeType);
+        // For images under 3MB, provide inline dataUrl for instant display
+        if (m.type === 'image' && (m.size || 0) < 3 * 1024 * 1024) {
+          try {
+            const buffer = await fsp.readFile(filePath);
+            dataUrl = bufferToDataUrl(buffer, m.mimeType);
+          } catch {}
+        }
       }
-      return { ...m, id: m._id.toString(), _id: undefined, dataUrl };
+      return {
+        ...m,
+        id: m._id.toString(),
+        _id: undefined,
+        dataUrl,
+        size: m.size || 0,
+        isSynced: true,
+      };
     }));
 
     return result;
@@ -233,7 +246,7 @@ export async function mediaRoutes(app: FastifyInstance) {
   // POST /api/media/blob — multipart upload (file + metadata fields)
   app.post('/api/media/blob', async (request, reply) => {
     const data = await request.file();
-    if (!data) return reply.status(400).send({ error: 'No file' });
+    if (!data) return reply.status(400).send({ error: 'No file uploaded' });
 
     const fields: Record<string, string> = {};
     for (const [key, field] of Object.entries(data.fields)) {
@@ -242,9 +255,9 @@ export async function mediaRoutes(app: FastifyInstance) {
       }
     }
 
-    const sessionId = fields.sessionId;
-    const mediaId = fields.mediaId;
-    if (!sessionId || !mediaId) return reply.status(400).send({ error: 'sessionId and mediaId required' });
+    const sessionId = fields.sessionId || (request.query as any)?.sessionId;
+    const mediaId = fields.mediaId || (request.query as any)?.mediaId || randomUUID();
+    if (!sessionId) return reply.status(400).send({ error: 'sessionId required' });
 
     const mimeType = data.mimetype || 'application/octet-stream';
     const ext = extForMime(mimeType, data.filename);
@@ -262,45 +275,56 @@ export async function mediaRoutes(app: FastifyInstance) {
     await pipeline(data.file, writeStream);
     const stat = fs.statSync(absolutePath);
 
+    const filename = fields.filename || data.filename || storedFilename;
+    const capturedAt = fields.capturedAt || new Date().toISOString();
+    const source = (fields.source || 'upload') as any;
+    const label = fields.label || undefined;
+    const annotations = fields.annotations || undefined;
+
     // Save metadata to MongoDB
-    try {
-      await Media.findOneAndUpdate(
-        { _id: mediaId },
-        {
-          _id: mediaId,
-          sessionId,
-          type: mediaType,
-          filename: fields.filename || data.filename || storedFilename,
-          capturedAt: fields.capturedAt || new Date().toISOString(),
-          source: (fields.source || 'upload') as any,
-          label: fields.label || undefined,
-          annotations: fields.annotations || undefined,
-          storagePath,
-          mimeType,
-          size: stat.size,
-        },
-        { upsert: true, new: true },
-      );
-    } catch {
-      // If ObjectId format issue, create with auto-generated _id
-      await Media.create({
+    await Media.findOneAndUpdate(
+      { _id: mediaId },
+      {
+        _id: mediaId,
         sessionId,
         type: mediaType,
-        filename: fields.filename || data.filename || storedFilename,
-        capturedAt: fields.capturedAt || new Date().toISOString(),
-        source: (fields.source || 'upload') as any,
-        label: fields.label || undefined,
-        annotations: fields.annotations || undefined,
+        filename,
+        capturedAt,
+        source,
+        label,
+        annotations,
         storagePath,
         mimeType,
         size: stat.size,
-      });
-    }
+      },
+      { upsert: true, new: true },
+    );
 
-    return { success: true, size: stat.size, storagePath };
+    const blobUrl = `/api/media/blob?sessionId=${encodeURIComponent(sessionId)}&mediaId=${encodeURIComponent(mediaId)}`;
+
+    return {
+      success: true,
+      mediaId,
+      size: stat.size,
+      storagePath,
+      url: blobUrl,
+      item: {
+        id: mediaId,
+        sessionId,
+        type: mediaType,
+        filename,
+        capturedAt,
+        source,
+        label,
+        annotations,
+        size: stat.size,
+        dataUrl: blobUrl,
+        isSynced: true,
+      }
+    };
   });
 
-  // GET /api/media/blob?sessionId=xxx&mediaId=yyy — serve file
+  // GET /api/media/blob?sessionId=xxx&mediaId=yyy — serve file with Range support
   app.get('/api/media/blob', async (request, reply) => {
     const { sessionId, mediaId } = request.query as { sessionId?: string; mediaId?: string };
     if (!sessionId || !mediaId) return reply.status(400).send('Missing params');
@@ -312,9 +336,33 @@ export async function mediaRoutes(app: FastifyInstance) {
     if (!fs.existsSync(filePath)) return reply.status(404).send('File not found');
 
     const stat = fs.statSync(filePath);
-    reply.header('Content-Type', (item as any).mimeType);
-    reply.header('Content-Length', stat.size);
+    const mimeType = (item as any).mimeType || 'application/octet-stream';
+    const range = request.headers.range;
+
+    reply.header('Accept-Ranges', 'bytes');
     reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+
+    // Support HTTP Range requests for video streaming / scrub
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+
+      if (start >= stat.size || end >= stat.size) {
+        reply.header('Content-Range', `bytes */${stat.size}`);
+        return reply.status(416).send('Requested range not satisfiable');
+      }
+
+      const chunksize = end - start + 1;
+      reply.status(206);
+      reply.header('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+      reply.header('Content-Length', chunksize);
+      reply.header('Content-Type', mimeType);
+      return reply.send(fs.createReadStream(filePath, { start, end }));
+    }
+
+    reply.header('Content-Type', mimeType);
+    reply.header('Content-Length', stat.size);
     return reply.send(fs.createReadStream(filePath));
   });
 }

@@ -26,6 +26,17 @@ import { toast } from "sonner";
 
 type PrintMode = "with-content" | "images-only";
 
+function hasSectionContent(content?: string | null): boolean {
+  if (!content) return false;
+  const text = content
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#160;/gi, ' ')
+    .trim();
+  const hasMedia = /<img\s/i.test(content);
+  return text.length > 0 || hasMedia;
+}
+
 export function PrintPreview({
   patient,
   session,
@@ -63,10 +74,32 @@ export function PrintPreview({
     .filter((item) => selectedIds.includes(item.id))
     .slice(0, maxImages);
 
+  const is12Images = printMode === "images-only" && selectedImages.length === 12;
+
+  const validSections = useMemo(
+    () => report?.sections?.filter((s) => hasSectionContent(s.content)) ?? [],
+    [report?.sections],
+  );
+  const validDiagnoses = useMemo(
+    () => report?.diagnosis?.filter((d) => d && d.trim().length > 0) ?? [],
+    [report?.diagnosis],
+  );
+  const validRecs = useMemo(
+    () => report?.recommendations?.filter((r) => r && r.trim().length > 0) ?? [],
+    [report?.recommendations],
+  );
+  const hasFollowUp = hasSectionContent(report?.followUp);
+  const hasBiopsy = Boolean(report?.biopsy);
+
   const toggleImage = (id: string) => {
     setSelectedIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= maxImages) return [...prev.slice(1), id];
+      if (prev.length >= maxImages) {
+        toast.warning(
+          `Maximum of ${maxImages} images already selected. Please uncheck an image first to choose another.`,
+        );
+        return prev;
+      }
       return [...prev, id];
     });
   };
@@ -79,15 +112,16 @@ export function PrintPreview({
     if (!printWindow) {
       // Fallback if popup blocked
       toast.error(t.printPreview.unavailable);
+      return;
     }
 
-    printWindow?.document.write(`<!DOCTYPE html>
+    printWindow.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Endoscopy Report - ${patient.fullName}</title>
   <style>
-    @page { size: A4; margin: 8mm; }
+    @page { size: A4; margin: ${is12Images ? '6mm' : '8mm'}; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
@@ -95,12 +129,12 @@ export function PrintPreview({
       line-height: 1.5;
       color: #0f172a;
       background: white;
-      padding: 12mm 15mm;
+      padding: ${is12Images ? '6mm 10mm' : '10mm 14mm'};
     }
     .print-header {
-      padding-bottom: 12px;
+      padding-bottom: ${is12Images ? '8px' : '12px'};
       border-bottom: 2.5px solid #0f766e;
-      margin-bottom: 14px;
+      margin-bottom: ${is12Images ? '8px' : '14px'};
     }
     .header-row {
       display: flex;
@@ -110,14 +144,14 @@ export function PrintPreview({
     }
     .hospital-info { display: flex; align-items: center; gap: 12px; }
     .hospital-logo {
-      width: 52px; height: 52px;
+      width: ${is12Images ? '42px' : '52px'}; height: ${is12Images ? '42px' : '52px'};
       border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       background: #f0fdfa;
       font-size: 24px;
     }
     .hospital-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
-    .hospital-name { font-size: 16px; font-weight: 700; color: #0f172a; }
+    .hospital-name { font-size: ${is12Images ? '15px' : '16px'}; font-weight: 700; color: #0f172a; }
     .hospital-dept { font-size: 11px; color: #475569; }
     .hospital-addr { font-size: 10px; color: #64748b; }
     .report-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0f172a; text-align: right; }
@@ -141,14 +175,26 @@ export function PrintPreview({
       margin-top: 4px;
     }
     .body-images-only { margin-top: 4px; }
-    .section { margin-bottom: 10px; }
-    .section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #475569; margin-bottom: 2px; }
-    .section-text { font-size: 11px; color: #1e293b; }
-    .section-text p { margin: 0 0 4px 0; }
+    .section { margin-top: 14px; margin-bottom: 8px; }
+    .section:first-child { margin-top: 4px; }
+    .section-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #0f172a;
+      margin-top: 12px;
+      margin-bottom: 4px;
+      padding-bottom: 2px;
+      border-bottom: 2px solid #0f766e;
+      display: inline-block;
+    }
+    .section-text { font-size: 11px; color: #1e293b; line-height: 1.55; }
+    .section-text p { margin: 0 0 5px 0; }
     .section-text p:last-child { margin-bottom: 0; }
-    .section-text h1 { font-size: 14px; font-weight: 700; margin: 6px 0 3px; }
-    .section-text h2 { font-size: 12px; font-weight: 700; margin: 5px 0 3px; }
-    .section-text h3 { font-size: 11.5px; font-weight: 600; margin: 4px 0 2px; }
+    .section-text h1 { font-size: 14px; font-weight: 800; color: #0f172a; margin: 14px 0 5px; }
+    .section-text h2 { font-size: 12.5px; font-weight: 800; color: #0f172a; margin: 12px 0 4px; }
+    .section-text h3 { font-size: 11.5px; font-weight: 700; color: #0f172a; margin: 10px 0 3px; }
     .section-text ul, .section-text ol { padding-left: 16px; margin: 3px 0; }
     .section-text ul { list-style: disc; }
     .section-text ol { list-style: decimal; }
@@ -161,7 +207,7 @@ export function PrintPreview({
     .section-text mark { background: #fef08a; padding: 0 2px; }
     .section-text code { background: #f1f5f9; padding: 1px 4px; border-radius: 2px; font-family: monospace; font-size: 10px; }
     .section-text hr { border: none; border-top: 1px solid #e2e8f0; margin: 6px 0; }
-    .section-list { padding-left: 16px; font-size: 11px; color: #1e293b; }
+    .section-list { padding-left: 16px; font-size: 11px; color: #1e293b; line-height: 1.55; }
     .section-list li { margin-bottom: 2px; }
     .images-sidebar { display: flex; flex-direction: column; gap: 6px; }
     .images-sidebar figure { overflow: hidden; border-radius: 6px; border: 1px solid #e2e8f0; }
@@ -171,23 +217,86 @@ export function PrintPreview({
     .images-grid figure { overflow: hidden; border-radius: 6px; border: 1px solid #e2e8f0; }
     .images-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
     .images-grid figcaption { background: #f8fafc; padding: 3px 4px; text-align: center; font-size: 8px; font-weight: 500; color: #475569; }
-    .images-grid-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #475569; margin-bottom: 8px; }
+    .images-grid-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #0f766e; margin-bottom: 6px; }
+
+    /* 12 Images single-page A4 print grid: 3 images per row */
+    .images-grid-12 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      margin-top: 4px;
+      page-break-inside: avoid;
+    }
+    .images-grid-12 figure {
+      overflow: hidden;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .images-grid-12 img {
+      width: 100%;
+      height: 48mm;
+      object-fit: cover;
+      display: block;
+    }
+    .images-grid-12 figcaption {
+      background: #f8fafc;
+      padding: 2px 4px;
+      text-align: center;
+      font-size: 8px;
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .print-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
     .signature-block { display: flex; justify-content: flex-end; margin-bottom: 16px; }
-    .signature-line { width: 180px; border-top: 1px solid #64748b; padding-top: 6px; text-align: center; font-size: 11px; color: #1e293b; }
-    .signature-label { font-size: 9px; color: #64748b; }
+    .signature-line {
+      width: 220px;
+      border-top: 2px solid #0f172a;
+      padding-top: 8px;
+      text-align: center;
+    }
+    .doctor-name-print {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: 0.02em;
+      margin-bottom: 2px;
+    }
+    .signature-label {
+      font-size: 9.5px;
+      font-weight: 500;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
     .footer-text { font-size: 9px; color: #64748b; }
+
+    @media print {
+      html, body {
+        ${is12Images ? 'height: 100%; overflow: hidden; page-break-inside: avoid;' : ''}
+      }
+      .images-grid-12, .images-grid-12 figure {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    }
   </style>
 </head>
 <body>
   ${printContent}
   <script>
-  window.onload = function() { window.print();} 
+  window.onload = function() { window.print(); } 
   window.onafterprint = function() { window.close(); }
   </script>
 </body>
 </html>`);
-    printWindow?.document.close();
+    printWindow.document.close();
   };
 
   if (!report) {
@@ -257,30 +366,61 @@ export function PrintPreview({
             </button>
           </div>
 
-          {/* Image Selection — Collapsible */}
+          {/* Image Selection — Collapsible with Sticky Floating Counter */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setImagesCollapsed((v) => !v)}
-                className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition"
-              >
-                {imagesCollapsed ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronUp className="h-4 w-4" />
-                )}
-                <Label className="cursor-pointer">
-                  {t.printPreview.selectImages} ({selectedIds.length}/
-                  {maxImages} {t.printPreview.max})
-                </Label>
-              </button>
-              <div className="flex gap-2">
+            {/* Sticky Floating Status Bar for Image Selection */}
+            <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 shadow-lg backdrop-blur-md transition-all">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-transform ${
+                    selectedIds.length === maxImages
+                      ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 scale-105 ring-2 ring-amber-500/30"
+                      : "bg-primary/15 text-primary"
+                  }`}
+                >
+                  {selectedIds.length}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {selectedIds.length} / {maxImages} Images Selected
+                    </span>
+                    {selectedIds.length === maxImages && (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Max reached
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {printMode === "with-content"
+                      ? "Selected images appear in the right column beside the text"
+                      : is12Images
+                        ? "12 images: single A4 page layout (header patient info & footer automatically hidden)"
+                        : "Select up to 12 images for procedure gallery"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const topImages = imageMedia.slice(0, maxImages).map((m) => m.id);
+                    setSelectedIds(topImages);
+                    toast.success(`Selected first ${topImages.length} image(s).`);
+                  }}
+                  disabled={imageMedia.length === 0}
+                  className="h-8 text-xs"
+                >
+                  Select First {maxImages}
+                </Button>
                 {selectedIds.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setSelectedIds([])}
+                    className="h-8 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20"
                   >
                     {t.printPreview.clearAll}
                   </Button>
@@ -289,11 +429,22 @@ export function PrintPreview({
                   variant="ghost"
                   size="sm"
                   onClick={() => setImagesCollapsed((v) => !v)}
+                  className="h-8 text-xs"
                 >
-                  {imagesCollapsed ? "Show" : "Hide"}
+                  {imagesCollapsed ? "Show Images" : "Hide Images"}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handlePrint}
+                  className="h-8 text-xs gap-1.5 shadow-sm"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Print ({selectedIds.length})
                 </Button>
               </div>
             </div>
+
             {!imagesCollapsed &&
               (imageMedia.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-card-border p-4 text-sm text-muted-foreground">
@@ -302,33 +453,47 @@ export function PrintPreview({
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {imageMedia.map((item) => {
-                    const checked = selectedIds.includes(item.id);
+                    const selectedIdx = selectedIds.indexOf(item.id);
+                    const checked = selectedIdx !== -1;
                     return (
-                      <label
+                      <div
                         key={item.id}
-                        className={`relative cursor-pointer overflow-hidden rounded-xl border-2 transition ${
+                        onClick={() => toggleImage(item.id)}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition ${
                           checked
-                            ? "border-primary ring-2 ring-primary/20"
-                            : "border-card-border hover:border-primary/50"
+                            ? "border-primary ring-2 ring-primary/25 bg-primary/5 shadow-xs"
+                            : "border-card-border hover:border-primary/50 hover:shadow-xs"
                         }`}
                       >
-                        <Checkbox
-                          checked={checked}
-                          onChange={() => toggleImage(item.id)}
-                          className="absolute left-2 top-2 z-10"
-                        />
-                        <img
-                          src={item.dataUrl}
-                          alt={item.label || item.filename}
-                          className="aspect-video w-full object-cover"
-                          loading="lazy"
-                        />
-                        <div className="p-2">
+                        {/* Numbered order badge for selected images */}
+                        {checked && (
+                          <div className="absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground shadow-md animate-in zoom-in-75 duration-150">
+                            #{selectedIdx + 1}
+                          </div>
+                        )}
+                        <div className="absolute left-2 top-2 z-10">
+                          <Checkbox
+                            checked={checked}
+                            className="pointer-events-none data-[state=checked]:bg-primary"
+                          />
+                        </div>
+                        <div className="aspect-video w-full overflow-hidden bg-muted">
+                          <img
+                            src={item.dataUrl}
+                            alt={item.label || item.filename}
+                            className="h-full w-full object-cover transition-transform group-hover:scale-105 duration-200"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div className="p-2 flex items-center justify-between">
                           <p className="truncate text-xs font-medium text-foreground">
                             {item.label || item.filename}
                           </p>
+                          {checked && (
+                            <span className="text-[10px] text-primary font-bold">Selected</span>
+                          )}
                         </div>
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
@@ -336,8 +501,8 @@ export function PrintPreview({
           </div>
 
           <div className="flex justify-end border-t border-card-border pt-4">
-            <Button onClick={handlePrint} size="lg">
-              <Printer className="h-4 w-4" /> {t.printPreview.printReport}
+            <Button onClick={handlePrint} size="lg" className="gap-2 shadow-sm">
+              <Printer className="h-4 w-4" /> {t.printPreview.printReport} ({selectedIds.length} {selectedIds.length === 1 ? 'image' : 'images'})
             </Button>
           </div>
         </CardContent>
@@ -419,36 +584,38 @@ export function PrintPreview({
             </div>
           </div>
 
-          {/* Patient Info Bar */}
-          <div
-            className="patient-bar"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "8px",
-              marginTop: "12px",
-              padding: "10px 12px",
-              border: "1px solid #e2e8f0",
-              borderRadius: "8px",
-              background: "#f8fafc",
-            }}
-          >
-            <InfoCell label="Patient" value={patient.fullName} />
-            <InfoCell label="Code" value={patient.patientCode} />
-            <InfoCell
-              label="Age / Gender"
-              value={`${patient.age} / ${patient.gender}`}
-            />
-            <InfoCell
-              label="Date"
-              value={formatDateTime(session.scheduledAt)}
-            />
-            <InfoCell label="Doctor" value={report.doctorName} />
-            <InfoCell
-              label="Procedure"
-              value={getProcedureLabel(session.procedureType)}
-            />
-          </div>
+          {/* Patient Info Bar — removed on 12 images selection */}
+          {!is12Images && (
+            <div
+              className="patient-bar"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "8px",
+                marginTop: "12px",
+                padding: "10px 12px",
+                border: "1px solid #e2e8f0",
+                borderRadius: "8px",
+                background: "#f8fafc",
+              }}
+            >
+              <InfoCell label="Patient" value={patient.fullName} />
+              <InfoCell label="Code" value={patient.patientCode} />
+              <InfoCell
+                label="Age / Gender"
+                value={`${patient.age} / ${patient.gender}`}
+              />
+              <InfoCell
+                label="Date"
+                value={formatDateTime(session.scheduledAt)}
+              />
+              <InfoCell label="Doctor" value={report.doctorName} />
+              <InfoCell
+                label="Procedure"
+                value={getProcedureLabel(session.procedureType)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Content Area */}
@@ -471,28 +638,34 @@ export function PrintPreview({
                 />
               ) : (
                 <>
-                  {report.sections.map((section) => (
+                  {validSections.map((section, idx) => (
                     <div
                       key={section.title}
                       className="section"
-                      style={{ marginBottom: "10px" }}
+                      style={{
+                        marginTop: idx === 0 ? "4px" : "14px",
+                        marginBottom: "8px",
+                      }}
                     >
                       <div
                         className="section-title"
                         style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "0.12em",
-                          color: "#475569",
-                          marginBottom: "2px",
+                          letterSpacing: "0.08em",
+                          color: "#0f172a",
+                          marginBottom: "4px",
+                          paddingBottom: "2px",
+                          borderBottom: "2px solid #0f766e",
+                          display: "inline-block",
                         }}
                       >
                         {section.title}
                       </div>
                       <div
                         className="section-text tiptap-display"
-                        style={{ fontSize: "11px", color: "#1e293b" }}
+                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
                         dangerouslySetInnerHTML={{
                           __html: section.content || "",
                         }}
@@ -500,17 +673,20 @@ export function PrintPreview({
                     </div>
                   ))}
 
-                  {report.diagnosis.length > 0 && (
-                    <div className="section" style={{ marginBottom: "10px" }}>
+                  {validDiagnoses.length > 0 && (
+                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
                       <div
                         className="section-title"
                         style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "0.12em",
-                          color: "#475569",
-                          marginBottom: "2px",
+                          letterSpacing: "0.08em",
+                          color: "#0f172a",
+                          marginBottom: "4px",
+                          paddingBottom: "2px",
+                          borderBottom: "2px solid #0f766e",
+                          display: "inline-block",
                         }}
                       >
                         Diagnosis
@@ -521,26 +697,30 @@ export function PrintPreview({
                           paddingLeft: "16px",
                           fontSize: "11px",
                           color: "#1e293b",
+                          lineHeight: 1.55,
                         }}
                       >
-                        {report.diagnosis.map((item) => (
+                        {validDiagnoses.map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ol>
                     </div>
                   )}
 
-                  {report.recommendations.length > 0 && (
-                    <div className="section" style={{ marginBottom: "10px" }}>
+                  {validRecs.length > 0 && (
+                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
                       <div
                         className="section-title"
                         style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "0.12em",
-                          color: "#475569",
-                          marginBottom: "2px",
+                          letterSpacing: "0.08em",
+                          color: "#0f172a",
+                          marginBottom: "4px",
+                          paddingBottom: "2px",
+                          borderBottom: "2px solid #0f766e",
+                          display: "inline-block",
                         }}
                       >
                         Recommendations
@@ -551,56 +731,63 @@ export function PrintPreview({
                           paddingLeft: "16px",
                           fontSize: "11px",
                           color: "#1e293b",
+                          lineHeight: 1.55,
                         }}
                       >
-                        {report.recommendations.map((item) => (
+                        {validRecs.map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ol>
                     </div>
                   )}
 
-                  {report.followUp && (
-                    <div className="section" style={{ marginBottom: "10px" }}>
+                  {hasFollowUp && (
+                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
                       <div
                         className="section-title"
                         style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "0.12em",
-                          color: "#475569",
-                          marginBottom: "2px",
+                          letterSpacing: "0.08em",
+                          color: "#0f172a",
+                          marginBottom: "4px",
+                          paddingBottom: "2px",
+                          borderBottom: "2px solid #0f766e",
+                          display: "inline-block",
                         }}
                       >
                         Follow-up
                       </div>
                       <div
                         className="section-text tiptap-display"
-                        style={{ fontSize: "11px", color: "#1e293b" }}
-                        dangerouslySetInnerHTML={{ __html: report.followUp }}
+                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
+                        dangerouslySetInnerHTML={{ __html: report.followUp! }}
                       />
                     </div>
                   )}
 
-                  {report.biopsy && (
-                    <div className="section" style={{ marginBottom: "10px" }}>
+                  {hasBiopsy && (
+                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
                       <div
                         className="section-title"
                         style={{
-                          fontSize: "9px",
-                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "0.12em",
-                          color: "#475569",
-                          marginBottom: "2px",
+                          letterSpacing: "0.08em",
+                          color: "#0f172a",
+                          marginBottom: "4px",
+                          paddingBottom: "2px",
+                          borderBottom: "2px solid #0f766e",
+                          display: "inline-block",
                         }}
                       >
                         Biopsy
                       </div>
                       <div
                         className="section-text"
-                        style={{ fontSize: "11px", color: "#1e293b" }}
+                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
                       >
                         Taken from{" "}
                         <strong>
@@ -661,101 +848,193 @@ export function PrintPreview({
         ) : (
           /* Images Only Mode */
           <div className="body-images-only">
-            <div
-              className="images-grid-title"
-              style={{
-                fontSize: "9px",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                color: "#475569",
-                marginBottom: "8px",
-              }}
-            >
-              {t.printPreview.procedureImages}
-            </div>
-            <div
-              className="images-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "8px",
-              }}
-            >
-              {selectedImages.map((item) => (
-                <figure
-                  key={item.id}
+            {is12Images ? (
+              /* 12 Images single-page A4 layout */
+              <div>
+                <div
+                  className="images-grid-title"
                   style={{
-                    overflow: "hidden",
-                    borderRadius: "6px",
-                    border: "1px solid #e2e8f0",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#0f766e",
+                    marginBottom: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                   }}
                 >
-                  <img
-                    src={item.dataUrl}
-                    alt={item.label || item.filename}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
-                  />
-                  <figcaption
-                    style={{
-                      background: "#f8fafc",
-                      padding: "3px 4px",
-                      textAlign: "center",
-                      fontSize: "8px",
-                      fontWeight: 500,
-                      color: "#475569",
-                    }}
-                  >
-                    {item.label || item.filename}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
+                  <span>{t.printPreview.procedureImages} (12 Images A4 Single Page)</span>
+                  <span style={{ fontSize: "9px", color: "#64748b", fontWeight: 500 }}>
+                    {patient.fullName} · {patient.patientCode} · {formatDateTime(session.scheduledAt)}
+                  </span>
+                </div>
+                <div
+                  className="images-grid-12"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "5px",
+                    marginTop: "4px",
+                  }}
+                >
+                  {selectedImages.map((item, idx) => (
+                    <figure
+                      key={item.id}
+                      style={{
+                        overflow: "hidden",
+                        borderRadius: "4px",
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                      }}
+                    >
+                      <img
+                        src={item.dataUrl}
+                        alt={item.label || item.filename}
+                        style={{
+                          width: "100%",
+                          height: "48mm",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                      <figcaption
+                        style={{
+                          background: "#f8fafc",
+                          padding: "2px 4px",
+                          textAlign: "center",
+                          fontSize: "8px",
+                          fontWeight: 600,
+                          color: "#334155",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.label || `Image ${idx + 1}`}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* 3-column grid for < 12 images */
+              <div>
+                <div
+                  className="images-grid-title"
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: "#0f766e",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {t.printPreview.procedureImages}
+                </div>
+                <div
+                  className="images-grid"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "8px",
+                  }}
+                >
+                  {selectedImages.map((item) => (
+                    <figure
+                      key={item.id}
+                      style={{
+                        overflow: "hidden",
+                        borderRadius: "6px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <img
+                        src={item.dataUrl}
+                        alt={item.label || item.filename}
+                        style={{
+                          width: "100%",
+                          aspectRatio: "1",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                      <figcaption
+                        style={{
+                          background: "#f8fafc",
+                          padding: "3px 4px",
+                          textAlign: "center",
+                          fontSize: "8px",
+                          fontWeight: 500,
+                          color: "#475569",
+                        }}
+                      >
+                        {item.label || item.filename}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Footer */}
-        <div
-          className="print-footer"
-          style={{
-            marginTop: "24px",
-            paddingTop: "12px",
-            borderTop: "1px solid #e2e8f0",
-          }}
-        >
+        {/* Footer — removed on 12 images selection */}
+        {!is12Images && (
           <div
+            className="print-footer"
             style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              marginBottom: "16px",
+              marginTop: "24px",
+              paddingTop: "12px",
+              borderTop: "1px solid #e2e8f0",
             }}
           >
             <div
               style={{
-                width: "180px",
-                borderTop: "1px solid #64748b",
-                paddingTop: "6px",
-                textAlign: "center",
-                fontSize: "11px",
-                color: "#1e293b",
+                display: "flex",
+                justifyContent: "flex-end",
+                marginBottom: "16px",
               }}
             >
-              {report.doctorName}
-              <br />
-              <span style={{ fontSize: "9px", color: "#64748b" }}>
-                {t.printPreview.signature}
-              </span>
+              <div
+                style={{
+                  width: "220px",
+                  borderTop: "2px solid #0f172a",
+                  paddingTop: "8px",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 800,
+                    color: "#0f172a",
+                    letterSpacing: "0.02em",
+                    marginBottom: "2px",
+                  }}
+                >
+                  {report.doctorName}
+                </div>
+                <span
+                  style={{
+                    fontSize: "9.5px",
+                    fontWeight: 500,
+                    color: "#64748b",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {t.printPreview.signature}
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize: "9px", color: "#64748b" }}>
+              {settings.reportFooter}
             </div>
           </div>
-          <div style={{ fontSize: "9px", color: "#64748b" }}>
-            {settings.reportFooter}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

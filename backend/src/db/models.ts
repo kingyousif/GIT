@@ -115,6 +115,7 @@ export const User = mongoose.model('User', UserSchema);
 
 // ===== Media metadata (stored in DB, actual files on disk) =====
 const MediaSchema = new Schema({
+  _id: { type: String, required: true },
   sessionId: { type: String, required: true, index: true },
   type: { type: String, enum: ['image', 'video', 'report'], required: true },
   filename: { type: String, required: true },

@@ -104,26 +104,33 @@ export function createTextReportCopy(input: {
   ];
 
   input.sections.forEach((section) => {
+    const text = (section.content || '').replace(/<[^>]*>/g, '').trim();
+    if (!text) return;
     lines.push(`${section.title.toUpperCase()}:`);
-    lines.push(section.content);
+    lines.push(text);
     lines.push('');
   });
 
-  if (input.diagnosis.length) {
+  const validDiagnosis = input.diagnosis.filter((item) => item && item.trim().length > 0);
+  if (validDiagnosis.length) {
     lines.push('DIAGNOSIS:');
-    input.diagnosis.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
+    validDiagnosis.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
     lines.push('');
   }
 
-  if (input.recommendations.length) {
+  const validRecs = input.recommendations.filter((item) => item && item.trim().length > 0);
+  if (validRecs.length) {
     lines.push('RECOMMENDATIONS:');
-    input.recommendations.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
+    validRecs.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
     lines.push('');
   }
 
   if (input.followUp) {
-    lines.push('FOLLOW-UP:');
-    lines.push(input.followUp);
+    const followUpText = input.followUp.replace(/<[^>]*>/g, '').trim();
+    if (followUpText) {
+      lines.push('FOLLOW-UP:');
+      lines.push(followUpText);
+    }
   }
 
   return lines.join('\n');

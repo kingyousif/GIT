@@ -36,7 +36,16 @@ export async function writeToLocalFolder(subPath: string, data: Blob): Promise<b
     const dir = dirPath ? await getSubDir(_dirHandle, dirPath) : _dirHandle;
     const fileHandle = await dir.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
-    await writable.write(data);
+    if (data.size > 8 * 1024 * 1024) {
+      // Chunk large files (e.g. videos) to prevent Chrome out-of-memory or QuotaExceeded aborts
+      const chunkSize = 4 * 1024 * 1024;
+      for (let offset = 0; offset < data.size; offset += chunkSize) {
+        const chunk = data.slice(offset, Math.min(offset + chunkSize, data.size));
+        await writable.write(chunk);
+      }
+    } else {
+      await writable.write(data);
+    }
     await writable.close();
     return true;
   } catch (err) {

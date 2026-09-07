@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Maximize2, Minimize2, Save, Printer } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2, Save, Printer, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,18 +26,31 @@ export function FreeReportEditor({ patient, session, report, settings, onAfterSa
   const [content, setContent] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<Date | null>(null);
 
-  // The print preview owns the hospital and patient header, so store body HTML only.
+  const persistedReportRef = useRef<Report | null>(report ?? null);
+  const currentReportIdRef = useRef<string | undefined>(report?.id);
+  const lastSavedContentRef = useRef<string>(report?.freeReportHtml || '');
+
+  // Only sync when report ID actually changes (not on re-renders or in-place saves)
   useEffect(() => {
-    setContent(report?.freeReportHtml || '<p></p>');
-  }, [report]);
+    if (report?.id !== currentReportIdRef.current) {
+      currentReportIdRef.current = report?.id;
+      persistedReportRef.current = report ?? null;
+      setContent(report?.freeReportHtml || '<p></p>');
+      lastSavedContentRef.current = report?.freeReportHtml || '';
+    }
+  }, [report?.id]);
 
-  const handleSave = async (status: 'draft' | 'final', openPrint = false) => {
-    setSaving(true);
+  const handleSave = async (status: 'draft' | 'final', openPrint = false, isAutoSave = false) => {
+    if (!isAutoSave) setSaving(true);
+    const savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+
     try {
+      const currentReport = persistedReportRef.current;
       const saved = await saveReport({
-        id: report?.id,
-        createdAt: report?.createdAt,
+        id: currentReport?.id,
+        createdAt: currentReport?.createdAt,
         sessionId: session.id,
         doctorName: session.doctorName,
         templateUsed: report?.templateUsed,
@@ -51,21 +64,47 @@ export function FreeReportEditor({ patient, session, report, settings, onAfterSa
         status,
         freeReportHtml: content,
       });
-      try {
-        await saveReportSnapshot({ patient, session, report: saved, settings });
-      } catch (snapshotError) {
+
+      persistedReportRef.current = saved;
+      currentReportIdRef.current = saved.id;
+      lastSavedContentRef.current = content;
+
+      saveReportSnapshot({ patient, session, report: saved, settings }).catch((snapshotError) => {
         console.error('Snapshot failed:', snapshotError);
+      });
+
+      if (isAutoSave) {
+        // Silent autosave: no toast, no scroll jump
+        setLastAutoSavedAt(new Date());
+        return;
       }
+
       await onAfterSave?.(saved);
       if (openPrint) await onOpenPrint?.(saved);
       toast.success(status === 'final' ? t.reportBuilder.reportFinalized : t.reportBuilder.draftSaved);
+
+      if (typeof window !== 'undefined' && Math.abs(window.scrollY - savedScrollY) > 5) {
+        window.scrollTo({ top: savedScrollY, behavior: 'instant' as ScrollBehavior });
+      }
     } catch (err) {
       console.error(err);
-      toast.error('Failed to save report.');
+      if (!isAutoSave) {
+        toast.error('Failed to save report.');
+      }
     } finally {
-      setSaving(false);
+      if (!isAutoSave) setSaving(false);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (report?.status === 'final') return;
+      if (!content || content === lastSavedContentRef.current) return;
+      void handleSave('draft', false, true);
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [content, report?.status]);
 
   const editorElement = (
     <RichTextEditor
@@ -100,13 +139,19 @@ export function FreeReportEditor({ patient, session, report, settings, onAfterSa
         </CardHeader>
         <CardContent>
           {editorElement}
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <Button onClick={() => handleSave('draft')} disabled={saving || report?.status === 'final'}>
               <Save className="h-4 w-4" /> {t.reportBuilder.saveDraft}
             </Button>
             <Button variant="outline" onClick={() => handleSave('final')} disabled={saving || report?.status === 'final'}>
               {t.reportBuilder.finalizeReport}
             </Button>
+            {lastAutoSavedAt && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 ml-auto">
+                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                Draft autosaved ({lastAutoSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -116,7 +161,13 @@ export function FreeReportEditor({ patient, session, report, settings, onAfterSa
         <DialogContent className="h-[95vh] max-w-[95vw] flex flex-col p-4">
           <div className="flex items-center justify-between border-b border-card-border pb-3">
             <h2 className="text-lg font-semibold">{t.freeReport.title} — {patient.fullName}</h2>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {lastAutoSavedAt && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1 mr-2">
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  Autosaved
+                </span>
+              )}
               <Button size="sm" onClick={() => handleSave('draft')} disabled={saving || report?.status === 'final'}>
                 <Save className="h-4 w-4" /> {t.reportBuilder.saveDraft}
               </Button>

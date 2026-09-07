@@ -11,6 +11,17 @@ function uuid() {
 /**
  * Build the inner report HTML body — used for both the snapshot and live preview.
  */
+function hasSectionContent(content?: string | null): boolean {
+  if (!content) return false;
+  const text = content
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#160;/gi, ' ')
+    .trim();
+  const hasMedia = /<img\s/i.test(content);
+  return text.length > 0 || hasMedia;
+}
+
 export function buildReportHtmlBody({
   patient,
   session,
@@ -22,7 +33,8 @@ export function buildReportHtmlBody({
   report: Report;
   settings: AppSettings;
 }): string {
-  const sectionsHtml = report.sections
+  const validSections = report.sections.filter((s) => hasSectionContent(s.content));
+  const sectionsHtml = validSections
     .map(
       (s) => `
       <div class="section">
@@ -32,21 +44,23 @@ export function buildReportHtmlBody({
     )
     .join('');
 
-  const diagnosisHtml = report.diagnosis.length
+  const validDiagnoses = report.diagnosis?.filter((d) => d && d.trim().length > 0) ?? [];
+  const diagnosisHtml = validDiagnoses.length
     ? `<div class="section">
         <div class="section-title">Diagnosis</div>
-        <ol class="section-list">${report.diagnosis.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
+        <ol class="section-list">${validDiagnoses.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
       </div>`
     : '';
 
-  const recommendationsHtml = report.recommendations.length
+  const validRecs = report.recommendations?.filter((r) => r && r.trim().length > 0) ?? [];
+  const recommendationsHtml = validRecs.length
     ? `<div class="section">
         <div class="section-title">Recommendations</div>
-        <ol class="section-list">${report.recommendations.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
+        <ol class="section-list">${validRecs.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
       </div>`
     : '';
 
-  const followUpHtml = report.followUp
+  const followUpHtml = hasSectionContent(report.followUp)
     ? `<div class="section">
         <div class="section-title">Follow-up</div>
         <div class="section-text">${report.followUp}</div>
@@ -103,8 +117,8 @@ export function buildReportHtmlBody({
     <div class="print-footer">
       <div class="signature-block">
         <div class="signature-line">
-          ${escapeHtml(report.doctorName)}<br />
-          <span class="signature-label">Signature</span>
+          <div class="doctor-name-print" style="font-size:15px; font-weight:800; color:#0f172a; margin-bottom:2px;">${escapeHtml(report.doctorName)}</div>
+          <span class="signature-label" style="font-size:9.5px; color:#64748b; font-weight:500;">Signature</span>
         </div>
       </div>
       <div class="footer-text">${escapeHtml(settings.reportFooter)}</div>

@@ -2,23 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:4000';
 
-// GET /api/media/blob — proxy blob download from backend
+// GET /api/media/blob — proxy blob download with streaming and Range support
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams.toString();
   const url = `${BACKEND_URL}/api/media/blob${params ? `?${params}` : ''}`;
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
+    const forwardHeaders: Record<string, string> = {};
+    const range = request.headers.get('range');
+    if (range) {
+      forwardHeaders['range'] = range;
+    }
+
+    const res = await fetch(url, { headers: forwardHeaders });
+    if (!res.ok && res.status !== 206) {
       return new NextResponse('Not found', { status: res.status });
     }
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const contentType = res.headers.get('content-type') || 'application/octet-stream';
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': String(buffer.length),
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
+
+    const responseHeaders = new Headers();
+    res.headers.forEach((value, key) => {
+      responseHeaders.set(key, value);
+    });
+
+    return new NextResponse(res.body, {
+      status: res.status,
+      headers: responseHeaders,
     });
   } catch (err) {
     console.error('Backend proxy error (GET /api/media/blob):', err);
@@ -29,11 +36,12 @@ export async function GET(request: NextRequest) {
 // POST /api/media/blob — proxy multipart file upload to backend
 export async function POST(request: NextRequest) {
   try {
-    // Read the raw body and forward it with the original content-type (includes boundary)
+    const params = request.nextUrl.searchParams.toString();
+    const url = `${BACKEND_URL}/api/media/blob${params ? `?${params}` : ''}`;
     const contentType = request.headers.get('content-type') || '';
     const body = await request.arrayBuffer();
 
-    const res = await fetch(`${BACKEND_URL}/api/media/blob`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': contentType,

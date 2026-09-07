@@ -51,6 +51,8 @@ export interface MediaFile {
   label?: string;
   annotations?: string;
   reportId?: string;
+  size?: number;
+  isSynced?: boolean;
 }
 
 export interface ReportSection {
