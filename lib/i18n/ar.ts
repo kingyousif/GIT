@@ -315,6 +315,8 @@ const ar: DeepString<typeof en> = {
     imagesOnlyDesc: 'حتى 12 صورة في شبكة 3 أعمدة، بدون محتوى',
     imagesOnly12: 'الصور فقط (12 صورة)',
     imagesOnly12Desc: '12 صورة في 4 صفوف (3 بكل صف) على صفحة واحدة',
+    imagesOnly15: 'الصور فقط (15 صورة)',
+    imagesOnly15Desc: '15 صورة في 5 صفوف (3 بكل صف) على صفحة واحدة',
     selectImages: 'اختر الصور',
     max: 'الحد الأقصى',
     clearAll: 'مسح الكل',

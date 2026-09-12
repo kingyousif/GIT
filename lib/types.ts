@@ -58,6 +58,7 @@ export interface MediaFile {
 export interface ReportSection {
   title: string;
   content: string;
+  titleColor?: string;
 }
 
 export interface Report {

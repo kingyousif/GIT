@@ -1,9 +1,19 @@
-import { addMediaItemAsync, getMediaForSessionAsync, deleteMediaItemAsync } from '@/lib/media-db';
-import { MediaFile, Patient, ProcedureSession, Report, AppSettings } from '@/lib/types';
-import { formatDateTime, getProcedureLabel } from '@/lib/utils';
+import {
+  addMediaItemAsync,
+  deleteMediaItemAsync,
+  getMediaForSessionAsync,
+} from "@/lib/media-db";
+import {
+  AppSettings,
+  MediaFile,
+  Patient,
+  ProcedureSession,
+  Report,
+} from "@/lib/types";
+import { formatDateTime, getProcedureLabel } from "@/lib/utils";
 
 function uuid() {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -14,9 +24,9 @@ function uuid() {
 function hasSectionContent(content?: string | null): boolean {
   if (!content) return false;
   const text = content
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&#160;/gi, ' ')
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#160;/gi, " ")
     .trim();
   const hasMedia = /<img\s/i.test(content);
   return text.length > 0 || hasMedia;
@@ -33,46 +43,50 @@ export function buildReportHtmlBody({
   report: Report;
   settings: AppSettings;
 }): string {
-  const validSections = report.sections.filter((s) => hasSectionContent(s.content));
+  const validSections = report.sections.filter((s) =>
+    hasSectionContent(s.content),
+  );
   const sectionsHtml = validSections
     .map(
       (s) => `
       <div class="section">
         <div class="section-title">${escapeHtml(s.title)}</div>
-        <div class="section-text">${s.content || ''}</div>
+        <div class="section-text">${s.content || ""}</div>
       </div>`,
     )
-    .join('');
+    .join("");
 
-  const validDiagnoses = report.diagnosis?.filter((d) => d && d.trim().length > 0) ?? [];
+  const validDiagnoses =
+    report.diagnosis?.filter((d) => d && d.trim().length > 0) ?? [];
   const diagnosisHtml = validDiagnoses.length
     ? `<div class="section">
         <div class="section-title">Diagnosis</div>
-        <ol class="section-list">${validDiagnoses.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
+        <ol class="section-list">${validDiagnoses.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ol>
       </div>`
-    : '';
+    : "";
 
-  const validRecs = report.recommendations?.filter((r) => r && r.trim().length > 0) ?? [];
+  const validRecs =
+    report.recommendations?.filter((r) => r && r.trim().length > 0) ?? [];
   const recommendationsHtml = validRecs.length
     ? `<div class="section">
         <div class="section-title">Recommendations</div>
-        <ol class="section-list">${validRecs.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ol>
+        <ol class="section-list">${validRecs.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ol>
       </div>`
-    : '';
+    : "";
 
   const followUpHtml = hasSectionContent(report.followUp)
     ? `<div class="section">
         <div class="section-title">Follow-up</div>
         <div class="section-text">${report.followUp}</div>
       </div>`
-    : '';
+    : "";
 
   const biopsyHtml = report.biopsy
     ? `<div class="section">
         <div class="section-title">Biopsy</div>
-        <div class="section-text">Taken from <strong>${escapeHtml(report.biopsyLocation || 'unspecified')}</strong>${report.biopsySentTo ? `, sent to ${escapeHtml(report.biopsySentTo)}` : ''}</div>
+        <div class="section-text">Taken from <strong>${escapeHtml(report.biopsyLocation || "unspecified")}</strong>${report.biopsySentTo ? `, sent to ${escapeHtml(report.biopsySentTo)}` : ""}</div>
       </div>`
-    : '';
+    : "";
 
   const structuredBodyHtml = `
       ${sectionsHtml}
@@ -96,7 +110,7 @@ export function buildReportHtmlBody({
         </div>
         <div style="text-align: right;">
           <div class="report-title"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAyMDAgNDAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwZDk0ODgiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjViNWIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNSAyMCBRMTAgOCAxOCAxNSBRMjUgMjIgMjggMTIgUTMyIDUgMzYgMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNnKSIgc3Ryb2tlLXdpZHRoPSIyLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjM2IiBjeT0iMTgiIHI9IjMiIGZpbGw9IiMwZDk0ODgiIG9wYWNpdHk9IjAuNiIvPjx0ZXh0IHg9IjQ1IiB5PSIyNiIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsIHNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMGY3NjZlIj5FbmRvc2NvcHkgUmVwb3J0PC90ZXh0Pjwvc3ZnPg==" alt="Endoscopy Report" style="height:40px;" /></div>
-          <div class="report-status">${report.status === 'final' ? '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxNDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMzgiIGhlaWdodD0iMjYiIHJ4PSIxMyIgZmlsbD0iI2VjZmRmNSIgc3Ryb2tlPSIjMTBiOTgxIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xOCAxNCBMMjMgMTkgTDMwIDExIiBmaWxsPSJub25lIiBzdHJva2U9IiMwNTk2NjkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48dGV4dCB4PSIzOCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDU5NjY5Ij5GaW5hbCBSZXBvcnQ8L3RleHQ+PC9zdmc+" alt="Final Report" style="height:24px;" />' : '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxMDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSI5OCIgaGVpZ2h0PSIyNiIgcng9IjEzIiBmaWxsPSIjZmVmM2M3IiBzdHJva2U9IiNmNTljMTEiIHN0cm9rZS13aWR0aD0iMS41Ii8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxNCIgcj0iNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZDk3NzA2IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xNSAxMSBBNSA1IDAgMSAxIDE1IDE3IiBmaWxsPSJub25lIiBzdHJva2U9IiNkOTc3MDYiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1kYXNoYXJyYXk9IjIgMiIvPjx0ZXh0IHg9IjI4IiB5PSIxOCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNkOTc3MDYiPkRyYWZ0PC90ZXh0Pjwvc3ZnPg==" alt="Draft" style="height:24px;" />'}</div>
+          <div class="report-status">${report.status === "final" ? '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxNDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMzgiIGhlaWdodD0iMjYiIHJ4PSIxMyIgZmlsbD0iI2VjZmRmNSIgc3Ryb2tlPSIjMTBiOTgxIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xOCAxNCBMMjMgMTkgTDMwIDExIiBmaWxsPSJub25lIiBzdHJva2U9IiMwNTk2NjkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48dGV4dCB4PSIzOCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDU5NjY5Ij5GaW5hbCBSZXBvcnQ8L3RleHQ+PC9zdmc+" alt="Final Report" style="height:24px;" />' : '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxMDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSI5OCIgaGVpZ2h0PSIyNiIgcng9IjEzIiBmaWxsPSIjZmVmM2M3IiBzdHJva2U9IiNmNTljMTEiIHN0cm9rZS13aWR0aD0iMS41Ii8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxNCIgcj0iNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZDk3NzA2IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xNSAxMSBBNSA1IDAgMSAxIDE1IDE3IiBmaWxsPSJub25lIiBzdHJva2U9IiNkOTc3MDYiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1kYXNoYXJyYXk9IjIgMiIvPjx0ZXh0IHg9IjI4IiB5PSIxOCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNkOTc3MDYiPkRyYWZ0PC90ZXh0Pjwvc3ZnPg==" alt="Draft" style="height:24px;" />'}</div>
         </div>
       </div>
 
@@ -114,25 +128,27 @@ export function buildReportHtmlBody({
       ${reportBodyHtml}
     </div>
 
-    <div class="print-footer">
+    <div class="print-footer"> 
+       <div class="footer-text">${escapeHtml(settings.reportFooter)}</div>
+   
       <div class="signature-block">
         <div class="signature-line">
           <div class="doctor-name-print" style="font-size:15px; font-weight:800; color:#0f172a; margin-bottom:2px;">${escapeHtml(report.doctorName)}</div>
           <span class="signature-label" style="font-size:9.5px; color:#64748b; font-weight:500;">Signature</span>
         </div>
       </div>
-      <div class="footer-text">${escapeHtml(settings.reportFooter)}</div>
+      
     </div>
   `;
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -154,10 +170,15 @@ export async function saveReportSnapshot({
 
   // Find existing snapshot for the same reportId and remove it
   const existingMedia = await getMediaForSessionAsync(session.id);
-  const existing = existingMedia.find((m) => m.type === 'report' && m.reportId === report.id);
-  const existingReports = existingMedia.filter((m) => m.type === 'report');
+  const existing = existingMedia.find(
+    (m) => m.type === "report" && m.reportId === report.id,
+  );
+  const existingReports = existingMedia.filter((m) => m.type === "report");
   const reportNumber = existing
-    ? Number(existing.filename.match(/Report-(\d+)/)?.[1] ?? existingReports.length + 1)
+    ? Number(
+        existing.filename.match(/Report-(\d+)/)?.[1] ??
+          existingReports.length + 1,
+      )
     : existingReports.length + 1;
 
   if (existing) {
@@ -169,11 +190,11 @@ export async function saveReportSnapshot({
   const media: MediaFile = {
     id: uuid(),
     sessionId: session.id,
-    type: 'report',
-    source: 'report',
+    type: "report",
+    source: "report",
     dataUrl,
     filename: `Report-${reportNumber}.html`,
-    label: `Report ${reportNumber}${report.status === 'final' ? ' (Final)' : ' (Draft)'}`,
+    label: `Report ${reportNumber}${report.status === "final" ? " (Final)" : " (Draft)"}`,
     capturedAt: new Date().toISOString(),
     reportId: report.id,
   };

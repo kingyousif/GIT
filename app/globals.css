@@ -532,3 +532,20 @@ video {
   padding: 0.1em 0.2em;
   border-radius: 2px;
 }
+
+.tiptap sub,
+.tiptap-display sub {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: sub;
+}
+
+.tiptap sup,
+.tiptap-display sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: super;
+}
+

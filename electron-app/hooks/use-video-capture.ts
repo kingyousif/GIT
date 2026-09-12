@@ -10,6 +10,7 @@ import {
 } from "@/lib/media-db";
 import { MediaFile } from "@/lib/types";
 import { fileToDataUrl } from "@/lib/utils";
+import { deinterlaceCanvas } from "@/lib/deinterlace";
 
 function detectSource(label?: string): MediaFile["source"] {
   const normalized = label?.toLowerCase() ?? "";
@@ -176,6 +177,7 @@ export function useVideoCapture(sessionId: string) {
       canvas
         .getContext("2d")
         ?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      deinterlaceCanvas(canvas);
       const dataUrl = canvas.toDataURL("image/png");
       const device = devices.find((item) => item.deviceId === selectedDevice);
       const imageCount =

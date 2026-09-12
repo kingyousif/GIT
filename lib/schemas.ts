@@ -19,6 +19,7 @@ export const patientRegistrationSchema = z.object({
 export const reportSectionSchema = z.object({
   title: z.string().min(1),
   content: z.string().default(''),
+  titleColor: z.string().optional(),
 });
 
 export const reportSchema = z.object({

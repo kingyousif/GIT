@@ -194,8 +194,8 @@ export function MediaCapturePanel({
       saveCropConfig(sessionId, config);
       toast.success(
         config.enabled
-          ? "Crop settings applied. New captures will be cropped."
-          : "Crop disabled.",
+          ? "Crop settings saved and automatically applied to all procedures."
+          : "Crop disabled for all procedures.",
       );
     },
     [sessionId, setCropConfig],
@@ -239,6 +239,53 @@ export function MediaCapturePanel({
       onMediaChangedRef.current?.();
     }
   }, [capturedMedia]);
+
+  const splitScrollContainerRef = useRef<HTMLDivElement>(null);
+  const splitMediaEndRef = useRef<HTMLDivElement>(null);
+  const stackedMediaEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToMediaEnd = useCallback(() => {
+    setTimeout(() => {
+      if (layout === "split") {
+        if (splitScrollContainerRef.current) {
+          splitScrollContainerRef.current.scrollTo({
+            top: splitScrollContainerRef.current.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+        splitMediaEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      } else {
+        stackedMediaEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      }
+    }, 100);
+  }, [layout]);
+
+  const handleCaptureScreenshot = useCallback(async () => {
+    const res = await captureScreenshot();
+    if (res) {
+      scrollToMediaEnd();
+    }
+    return res;
+  }, [captureScreenshot, scrollToMediaEnd]);
+
+  // Whenever a new image is captured (or added), smoothly scroll the captured media list to the end
+  const prevImageCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    const currentImageCount = capturedMedia.filter((m) => m.type === "image").length;
+    if (
+      prevImageCountRef.current !== null &&
+      currentImageCount > prevImageCountRef.current
+    ) {
+      scrollToMediaEnd();
+    }
+    prevImageCountRef.current = currentImageCount;
+  }, [capturedMedia, scrollToMediaEnd]);
 
   useEffect(() => {
     if (previewMedia) {
@@ -347,7 +394,7 @@ export function MediaCapturePanel({
       switch (e.key.toLowerCase()) {
         case "a":
           e.preventDefault();
-          captureScreenshot();
+          handleCaptureScreenshot();
           break;
         case "b":
           e.preventDefault();
@@ -361,7 +408,7 @@ export function MediaCapturePanel({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [captureScreenshot, startRecording, stopRecording]);
+  }, [handleCaptureScreenshot, startRecording, stopRecording]);
 
   return (
     <div
@@ -552,7 +599,7 @@ export function MediaCapturePanel({
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => captureScreenshot()}
+                  onClick={() => handleCaptureScreenshot()}
                   disabled={isBusy}
                 >
                   <Camera className="h-4 w-4" /> {t.media.screenshot}
@@ -609,7 +656,8 @@ export function MediaCapturePanel({
 
           {/* Right panel: Captured media */}
           <div
-            className="flex flex-col overflow-y-auto"
+            ref={splitScrollContainerRef}
+            className="flex flex-col overflow-y-auto scroll-smooth"
             style={{ width: `${100 - splitPercent}%` }}
           >
             <div className="flex-1 space-y-3 p-4">
@@ -844,6 +892,7 @@ export function MediaCapturePanel({
                   ))}
                 </div>
               )}
+              <div ref={splitMediaEndRef} className="h-2 w-full" />
             </div>
           </div>
         </div>
@@ -934,7 +983,7 @@ export function MediaCapturePanel({
                   />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button onClick={() => captureScreenshot()} disabled={isBusy}>
+                  <Button onClick={() => handleCaptureScreenshot()} disabled={isBusy}>
                     <Camera className="h-4 w-4" /> {t.media.screenshot}
                   </Button>
                   <Button
@@ -1284,6 +1333,7 @@ export function MediaCapturePanel({
                       </div>
                     ))}
                   </div>
+                  <div ref={stackedMediaEndRef} className="h-2 w-full" />
                 </div>
               )}
             </CardContent>

@@ -321,6 +321,8 @@ const en = {
     imagesOnlyDesc: 'Up to 12 images in 3-column grid, no content',
     imagesOnly12: 'Images Only (12 Images)',
     imagesOnly12Desc: '12 images across 4 rows (3 per row) on single A4',
+    imagesOnly15: 'Images Only (15 Images)',
+    imagesOnly15Desc: '15 images across 5 rows (3 per row) on single A4',
     selectImages: 'Select images',
     max: 'max',
     clearAll: 'Clear all',

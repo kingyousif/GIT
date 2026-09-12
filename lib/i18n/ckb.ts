@@ -327,6 +327,8 @@ const ckb: DeepString<typeof en> = {
     imagesOnlyDesc: "تا ١٢ وێنە لە ٣ ستوون، بێ ناوەڕۆک",
     imagesOnly12: "تەنها وێنەکان (١٢ وێنە)",
     imagesOnly12Desc: "١٢ وێنە لە ٤ ڕیز (٣ لە هەر ڕیزێک) لەسەر یەک لاپەڕە",
+    imagesOnly15: "تەنها وێنەکان (١٥ وێنە)",
+    imagesOnly15Desc: "١٥ وێنە لە ٥ ڕیز (٣ لە هەر ڕیزێک) لەسەر یەک لاپەڕە",
     selectImages: "وێنەکان هەڵبژێرە",
     max: "زۆرترین",
     clearAll: "سڕینەوەی هەموو",

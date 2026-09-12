@@ -23,14 +23,25 @@ export const DEFAULT_CROP: CropConfig = {
 };
 
 const KEY_PREFIX = 'endo_crop_';
+export const GLOBAL_CROP_KEY = 'endo_crop_global';
 
-export function loadCropConfig(sessionId: string): CropConfig {
+export function loadCropConfig(sessionId?: string): CropConfig {
   if (typeof window === 'undefined') return DEFAULT_CROP;
   try {
-    const raw = window.localStorage.getItem(KEY_PREFIX + sessionId);
-    if (!raw) return DEFAULT_CROP;
-    const parsed = JSON.parse(raw) as Partial<CropConfig>;
-    return { ...DEFAULT_CROP, ...parsed };
+    if (sessionId) {
+      const raw = window.localStorage.getItem(KEY_PREFIX + sessionId);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<CropConfig>;
+        return { ...DEFAULT_CROP, ...parsed };
+      }
+    }
+    // Fall back to global crop settings saved from any procedure
+    const globalRaw = window.localStorage.getItem(GLOBAL_CROP_KEY);
+    if (globalRaw) {
+      const parsed = JSON.parse(globalRaw) as Partial<CropConfig>;
+      return { ...DEFAULT_CROP, ...parsed };
+    }
+    return DEFAULT_CROP;
   } catch {
     return DEFAULT_CROP;
   }
@@ -39,7 +50,32 @@ export function loadCropConfig(sessionId: string): CropConfig {
 export function saveCropConfig(sessionId: string, config: CropConfig): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(KEY_PREFIX + sessionId, JSON.stringify(config));
+    const serialized = JSON.stringify(config);
+    // Save to current session
+    if (sessionId) {
+      window.localStorage.setItem(KEY_PREFIX + sessionId, serialized);
+    }
+    // Save to global key so every procedure automatically inherits this crop
+    window.localStorage.setItem(GLOBAL_CROP_KEY, serialized);
+
+    // Also update any other existing procedure session crop keys in storage
+    try {
+      const keysToUpdate: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith(KEY_PREFIX)) {
+          keysToUpdate.push(key);
+        }
+      }
+      for (const k of keysToUpdate) {
+        window.localStorage.setItem(k, serialized);
+      }
+    } catch {}
+
+    // Dispatch custom event to notify all components/hooks across the app
+    window.dispatchEvent(
+      new CustomEvent('endo_crop_changed', { detail: config })
+    );
   } catch {
     // ignore quota errors
   }
@@ -49,6 +85,10 @@ export function clearCropConfig(sessionId: string): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(KEY_PREFIX + sessionId);
+    window.localStorage.removeItem(GLOBAL_CROP_KEY);
+    window.dispatchEvent(
+      new CustomEvent('endo_crop_changed', { detail: DEFAULT_CROP })
+    );
   } catch {
     // ignore
   }

@@ -39,7 +39,7 @@ SessionSchema.set('toJSON', { virtuals: true, transform: (_doc: any, ret: any) =
 export const Session = mongoose.model('Session', SessionSchema);
 
 // ===== Report =====
-const ReportSectionSchema = new Schema({ title: String, content: String }, { _id: false });
+const ReportSectionSchema = new Schema({ title: String, content: String, titleColor: { type: String, default: '' } }, { _id: false });
 
 const ReportSchema = new Schema({
   _id: { type: String, required: true },

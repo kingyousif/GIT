@@ -24,14 +24,115 @@ import { formatDateTime, getProcedureLabel } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 import { toast } from "sonner";
 
-type PrintMode = "with-content" | "images-only";
+type PrintMode = "report-5" | "report-6" | "images-only" | "images-15";
+
+function getModeLimit(mode: PrintMode): number {
+  switch (mode) {
+    case "report-5":
+      return 5;
+    case "report-6":
+      return 6;
+    case "images-15":
+      return 15;
+    case "images-only":
+    default:
+      return 12;
+  }
+}
+
+function getStoredMode(sessionId: string): PrintMode {
+  if (typeof window === "undefined") return "report-5";
+  try {
+    const saved = localStorage.getItem(`endo_print_mode_${sessionId}`);
+    if (
+      saved === "report-5" ||
+      saved === "report-6" ||
+      saved === "images-only" ||
+      saved === "images-15"
+    ) {
+      return saved as PrintMode;
+    }
+    if (saved === "with-content") return "report-5";
+  } catch {}
+  return "report-5";
+}
+
+function getStoredSelection(
+  sessionId: string,
+  mode: PrintMode,
+  availableMedia: MediaFile[],
+  limit: number,
+): string[] {
+  if (typeof window === "undefined") {
+    return availableMedia.slice(0, limit).map((m) => m.id);
+  }
+  try {
+    const raw = localStorage.getItem(`endo_print_sel_${sessionId}_${mode}`);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((id) => availableMedia.some((m) => m.id === id))
+          .slice(0, limit);
+      }
+    }
+    if (mode === "images-15") {
+      const raw12 = localStorage.getItem(
+        `endo_print_sel_${sessionId}_images-only`,
+      );
+      if (raw12 !== null) {
+        const parsed12 = JSON.parse(raw12);
+        if (Array.isArray(parsed12) && parsed12.length > 0) {
+          const base = parsed12.filter((id) =>
+            availableMedia.some((m) => m.id === id),
+          );
+          const unused = availableMedia
+            .filter((m) => !base.includes(m.id))
+            .map((m) => m.id);
+          return [...base, ...unused].slice(0, limit);
+        }
+      }
+    }
+    // Cross-pollinate from report-5 if switching to report-6 for the first time
+    if (mode === "report-6") {
+      const raw5 =
+        localStorage.getItem(`endo_print_sel_${sessionId}_report-5`) ||
+        localStorage.getItem(`endo_print_sel_${sessionId}_with-content`);
+      if (raw5 !== null) {
+        const parsed5 = JSON.parse(raw5);
+        if (Array.isArray(parsed5) && parsed5.length > 0) {
+          const base = parsed5.filter((id) =>
+            availableMedia.some((m) => m.id === id),
+          );
+          const unused = availableMedia
+            .filter((m) => !base.includes(m.id))
+            .map((m) => m.id);
+          return [...base, ...unused].slice(0, limit);
+        }
+      }
+    } else if (mode === "report-5") {
+      const rawOld = localStorage.getItem(
+        `endo_print_sel_${sessionId}_with-content`,
+      );
+      if (rawOld !== null) {
+        const parsedOld = JSON.parse(rawOld);
+        if (Array.isArray(parsedOld)) {
+          return parsedOld
+            .filter((id) => availableMedia.some((m) => m.id === id))
+            .slice(0, limit);
+        }
+      }
+    }
+  } catch {}
+  return availableMedia.slice(0, limit).map((m) => m.id);
+}
 
 function hasSectionContent(content?: string | null): boolean {
   if (!content) return false;
   const text = content
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&#160;/gi, ' ')
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#160;/gi, " ")
     .trim();
   const hasMedia = /<img\s/i.test(content);
   return text.length > 0 || hasMedia;
@@ -55,26 +156,40 @@ export function PrintPreview({
     () => media.filter((item) => item.type === "image"),
     [media],
   );
-  const [printMode, setPrintMode] = useState<PrintMode>("with-content");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [printMode, setPrintMode] = useState<PrintMode>(() =>
+    getStoredMode(session.id),
+  );
+
+  const maxImages = getModeLimit(printMode);
+
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
+    const initialMode = getStoredMode(session.id);
+    const limit = getModeLimit(initialMode);
+    return getStoredSelection(session.id, initialMode, imageMedia, limit);
+  });
+
   const [imagesCollapsed, setImagesCollapsed] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const maxImages = printMode === "with-content" ? 5 : 12;
-
+  // Sync / validate selectedIds when session, mode or imageMedia changes
   useEffect(() => {
-    setSelectedIds(
-      imageMedia
-        .slice(0, Math.min(imageMedia.length, maxImages))
-        .map((item) => item.id),
-    );
-  }, [imageMedia, maxImages]);
+    if (imageMedia.length === 0) return;
+    setSelectedIds((current) => {
+      const valid = current.filter((id) => imageMedia.some((m) => m.id === id));
+      if (valid.length > 0) return valid.slice(0, maxImages);
+      return getStoredSelection(session.id, printMode, imageMedia, maxImages);
+    });
+  }, [session.id, printMode, imageMedia, maxImages]);
 
   const selectedImages = imageMedia
     .filter((item) => selectedIds.includes(item.id))
     .slice(0, maxImages);
 
-  const is12Images = printMode === "images-only" && selectedImages.length === 12;
+  const isReportWithImages =
+    printMode === "report-5" || printMode === "report-6";
+  const is12Images = printMode === "images-only";
+  const is15Images = printMode === "images-15";
+  const isImagesOnlyMode = is12Images || is15Images;
 
   const validSections = useMemo(
     () => report?.sections?.filter((s) => hasSectionContent(s.content)) ?? [],
@@ -85,7 +200,8 @@ export function PrintPreview({
     [report?.diagnosis],
   );
   const validRecs = useMemo(
-    () => report?.recommendations?.filter((r) => r && r.trim().length > 0) ?? [],
+    () =>
+      report?.recommendations?.filter((r) => r && r.trim().length > 0) ?? [],
     [report?.recommendations],
   );
   const hasFollowUp = hasSectionContent(report?.followUp);
@@ -93,35 +209,72 @@ export function PrintPreview({
 
   const toggleImage = (id: string) => {
     setSelectedIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= maxImages) {
+      let next: string[];
+      if (prev.includes(id)) {
+        next = prev.filter((x) => x !== id);
+      } else if (prev.length >= maxImages) {
         toast.warning(
           `Maximum of ${maxImages} images already selected. Please uncheck an image first to choose another.`,
         );
         return prev;
+      } else {
+        next = [...prev, id];
       }
-      return [...prev, id];
+      try {
+        localStorage.setItem(
+          `endo_print_sel_${session.id}_${printMode}`,
+          JSON.stringify(next),
+        );
+      } catch {}
+      return next;
     });
+  };
+
+  const handleSelectFirst = () => {
+    const topImages = imageMedia.slice(0, maxImages).map((m) => m.id);
+    setSelectedIds(topImages);
+    try {
+      localStorage.setItem(
+        `endo_print_sel_${session.id}_${printMode}`,
+        JSON.stringify(topImages),
+      );
+    } catch {}
+    toast.success(`Selected first ${topImages.length} image(s).`);
+  };
+
+  const handleClearAll = () => {
+    setSelectedIds([]);
+    try {
+      localStorage.setItem(
+        `endo_print_sel_${session.id}_${printMode}`,
+        JSON.stringify([]),
+      );
+    } catch {}
+  };
+
+  const handleModeChange = (newMode: PrintMode) => {
+    setPrintMode(newMode);
+    try {
+      localStorage.setItem(`endo_print_mode_${session.id}`, newMode);
+    } catch {}
+    const limit = getModeLimit(newMode);
+    const stored = getStoredSelection(session.id, newMode, imageMedia, limit);
+    setSelectedIds(stored);
   };
 
   const handlePrint = () => {
     if (!printRef.current) return;
 
     const printContent = printRef.current.innerHTML;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      // Fallback if popup blocked
-      toast.error(t.printPreview.unavailable);
-      return;
-    }
 
-    printWindow.document.write(`<!DOCTYPE html>
+    const htmlDocument = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Endoscopy Report - ${patient.fullName}</title>
   <style>
-    @page { size: A4; margin: ${is12Images ? '6mm' : '8mm'}; }
+    @page { size: A4; margin: ${isImagesOnlyMode ? "5mm" : "8mm"}; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
@@ -129,12 +282,80 @@ export function PrintPreview({
       line-height: 1.5;
       color: #0f172a;
       background: white;
-      padding: ${is12Images ? '6mm 10mm' : '10mm 14mm'};
+      padding: ${isImagesOnlyMode ? "5mm 8mm" : "10mm 14mm"};
     }
+
+    /* Floating control bar (screen only) */
+    .print-control-bar {
+      position: sticky;
+      top: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #0f172a;
+      color: white;
+      padding: 10px 18px;
+      margin: ${isImagesOnlyMode ? "-5mm -8mm 12px -8mm" : "-10mm -14mm 16px -14mm"};
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .control-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      display: inline-block;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    }
+    .control-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-print {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0f766e;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-print:hover {
+      background: #0d9488;
+    }
+    .btn-close {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-close:hover {
+      background: rgba(255,255,255,0.25);
+    }
+
     .print-header {
-      padding-bottom: ${is12Images ? '8px' : '12px'};
+      padding-bottom: ${isImagesOnlyMode ? "8px" : "12px"};
       border-bottom: 2.5px solid #0f766e;
-      margin-bottom: ${is12Images ? '8px' : '14px'};
+      margin-bottom: ${isImagesOnlyMode ? "8px" : "14px"};
     }
     .header-row {
       display: flex;
@@ -144,14 +365,14 @@ export function PrintPreview({
     }
     .hospital-info { display: flex; align-items: center; gap: 12px; }
     .hospital-logo {
-      width: ${is12Images ? '42px' : '52px'}; height: ${is12Images ? '42px' : '52px'};
+      width: ${isImagesOnlyMode ? "40px" : "52px"}; height: ${isImagesOnlyMode ? "40px" : "52px"};
       border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       background: #f0fdfa;
       font-size: 24px;
     }
     .hospital-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
-    .hospital-name { font-size: ${is12Images ? '15px' : '16px'}; font-weight: 700; color: #0f172a; }
+    .hospital-name { font-size: ${isImagesOnlyMode ? "14px" : "16px"}; font-weight: 700; color: #0f172a; }
     .hospital-dept { font-size: 11px; color: #475569; }
     .hospital-addr { font-size: 10px; color: #64748b; }
     .report-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0f172a; text-align: right; }
@@ -170,8 +391,8 @@ export function PrintPreview({
     .info-cell-value { font-size: 11px; font-weight: 500; color: #0f172a; }
     .body-with-images {
       display: grid;
-      grid-template-columns: 1fr 45mm;
-      gap: 14px;
+      grid-template-columns: 1fr 50mm;
+      gap: 12px;
       margin-top: 4px;
     }
     .body-images-only { margin-top: 4px; }
@@ -182,11 +403,9 @@ export function PrintPreview({
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: #0f172a;
       margin-top: 12px;
       margin-bottom: 4px;
       padding-bottom: 2px;
-      border-bottom: 2px solid #0f766e;
       display: inline-block;
     }
     .section-text { font-size: 11px; color: #1e293b; line-height: 1.55; }
@@ -209,10 +428,36 @@ export function PrintPreview({
     .section-text hr { border: none; border-top: 1px solid #e2e8f0; margin: 6px 0; }
     .section-list { padding-left: 16px; font-size: 11px; color: #1e293b; line-height: 1.55; }
     .section-list li { margin-bottom: 2px; }
-    .images-sidebar { display: flex; flex-direction: column; gap: 6px; }
-    .images-sidebar figure { overflow: hidden; border-radius: 6px; border: 1px solid #e2e8f0; }
-    .images-sidebar img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
-    .images-sidebar figcaption { background: #f8fafc; padding: 3px 6px; text-align: center; font-size: 8px; font-weight: 500; color: #475569; }
+    .images-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: ${selectedImages.length >= 6 ? "3px" : "5px"};
+    }
+    .images-sidebar figure {
+      overflow: hidden;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .images-sidebar img {
+      width: 100%;
+      height: 31mm;
+      object-fit: cover;
+      display: block;
+    }
+    .images-sidebar figcaption {
+      background: #f8fafc;
+      padding: 2px 4px;
+      text-align: center;
+      font-size: 7.5px;
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .images-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
     .images-grid figure { overflow: hidden; border-radius: 6px; border: 1px solid #e2e8f0; }
     .images-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
@@ -253,6 +498,40 @@ export function PrintPreview({
       text-overflow: ellipsis;
     }
 
+    /* 15 Images single-page A4 print grid: 3 images per row, 5 rows */
+    .images-grid-15 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin-top: 2px;
+      page-break-inside: avoid;
+    }
+    .images-grid-15 figure {
+      overflow: hidden;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .images-grid-15 img {
+      width: 100%;
+      height: 37.5mm;
+      object-fit: cover;
+      display: block;
+    }
+    .images-grid-15 figcaption {
+      background: #f8fafc;
+      padding: 1.5px 3px;
+      text-align: center;
+      font-size: 7.5px;
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .print-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
     .signature-block { display: flex; justify-content: flex-end; margin-bottom: 16px; }
     .signature-line {
@@ -278,10 +557,16 @@ export function PrintPreview({
     .footer-text { font-size: 9px; color: #64748b; }
 
     @media print {
-      html, body {
-        ${is12Images ? 'height: 100%; overflow: hidden; page-break-inside: avoid;' : ''}
+      .no-print {
+        display: none !important;
       }
-      .images-grid-12, .images-grid-12 figure {
+      body {
+        padding: ${isImagesOnlyMode ? "5mm 8mm" : "10mm 14mm"} !important;
+      }
+      html, body {
+        ${isImagesOnlyMode || selectedImages.length >= 6 ? "height: 100%; overflow: hidden; page-break-inside: avoid;" : ""}
+      }
+      .images-grid-15, .images-grid-15 figure, .images-grid-12, .images-grid-12 figure, .images-sidebar, .images-sidebar figure {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
       }
@@ -289,14 +574,51 @@ export function PrintPreview({
   </style>
 </head>
 <body>
+  <div class="print-control-bar no-print">
+    <div class="control-brand">
+      <span class="pulse-dot"></span>
+      <strong>Endoscopy Report</strong> · <span>${patient.fullName} (${getProcedureLabel(session.procedureType)})</span>
+    </div>
+    <div class="control-actions">
+      <button onclick="window.print()" class="btn-print">🖨️ Print Report</button>
+      <button onclick="window.close()" class="btn-close">✕ Close Tab</button>
+    </div>
+  </div>
   ${printContent}
   <script>
-  window.onload = function() { window.print(); } 
-  window.onafterprint = function() { window.close(); }
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        try {
+          window.print();
+        } catch (err) {
+          console.error(err);
+        }
+      }, 400);
+    });
   </script>
 </body>
-</html>`);
-    printWindow.document.close();
+</html>`;
+
+    try {
+      const blob = new Blob([htmlDocument], {
+        type: "text/html;charset=utf-8",
+      });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      toast.success(
+        "Print report opened in a new tab. You can continue working in this window.",
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(t.printPreview.unavailable);
+    }
   };
 
   if (!report) {
@@ -321,46 +643,93 @@ export function PrintPreview({
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Mode Selection */}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <button
               type="button"
-              onClick={() => setPrintMode("with-content")}
-              className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left transition ${
-                printMode === "with-content"
-                  ? "border-primary bg-primary/5"
+              onClick={() => handleModeChange("report-5")}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
+                printMode === "report-5"
+                  ? "border-primary bg-primary/5 shadow-xs"
                   : "border-card-border hover:border-primary/50"
               }`}
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-4.5 w-4.5" />
               </div>
-              <div>
-                <p className="font-medium text-foreground">
-                  {t.printPreview.reportImages}
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm">
+                  {t.printPreview.report5Images}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {t.printPreview.reportImagesDesc}
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {t.printPreview.report5ImagesDesc}
                 </p>
               </div>
             </button>
+
             <button
               type="button"
-              onClick={() => setPrintMode("images-only")}
-              className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left transition ${
-                printMode === "images-only"
-                  ? "border-primary bg-primary/5"
+              onClick={() => handleModeChange("report-6")}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
+                printMode === "report-6"
+                  ? "border-primary bg-primary/5 shadow-xs"
                   : "border-card-border hover:border-primary/50"
               }`}
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <ImageIcon className="h-5 w-5" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-4.5 w-4.5" />
               </div>
-              <div>
-                <p className="font-medium text-foreground">
-                  {t.printPreview.imagesOnly}
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm">
+                  {t.printPreview.report6Images}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {t.printPreview.imagesOnlyDesc}
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {t.printPreview.report6ImagesDesc}
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleModeChange("images-only")}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
+                printMode === "images-only"
+                  ? "border-primary bg-primary/5 shadow-xs"
+                  : "border-card-border hover:border-primary/50"
+              }`}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ImageIcon className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm">
+                  {t.printPreview.imagesOnly12}
+                </p>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {t.printPreview.imagesOnly12Desc}
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleModeChange("images-15")}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
+                printMode === "images-15"
+                  ? "border-primary bg-primary/5 shadow-xs"
+                  : "border-card-border hover:border-primary/50"
+              }`}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ImageIcon className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm">
+                  {(t.printPreview as any).imagesOnly15 ||
+                    "Images Only (15 Images)"}
+                </p>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {(t.printPreview as any).imagesOnly15Desc ||
+                    "15 images across 5 rows (3 per row) on single A4"}
                 </p>
               </div>
             </button>
@@ -392,11 +761,13 @@ export function PrintPreview({
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {printMode === "with-content"
-                      ? "Selected images appear in the right column beside the text"
-                      : is12Images
-                        ? "12 images: single A4 page layout (header patient info & footer automatically hidden)"
-                        : "Select up to 12 images for procedure gallery"}
+                    {printMode === "report-5"
+                      ? "Selected 5 images appear in the right column beside the text"
+                      : printMode === "report-6"
+                        ? "Selected 6 images appear in the right column beside the text"
+                        : printMode === "images-15"
+                          ? "15 images: 5 rows of 3 images on single A4 page layout"
+                          : "12 images: single A4 page layout (header patient info & footer automatically hidden)"}
                   </p>
                 </div>
               </div>
@@ -405,11 +776,7 @@ export function PrintPreview({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    const topImages = imageMedia.slice(0, maxImages).map((m) => m.id);
-                    setSelectedIds(topImages);
-                    toast.success(`Selected first ${topImages.length} image(s).`);
-                  }}
+                  onClick={handleSelectFirst}
                   disabled={imageMedia.length === 0}
                   className="h-8 text-xs"
                 >
@@ -419,7 +786,7 @@ export function PrintPreview({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedIds([])}
+                    onClick={handleClearAll}
                     className="h-8 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20"
                   >
                     {t.printPreview.clearAll}
@@ -490,7 +857,9 @@ export function PrintPreview({
                             {item.label || item.filename}
                           </p>
                           {checked && (
-                            <span className="text-[10px] text-primary font-bold">Selected</span>
+                            <span className="text-[10px] text-primary font-bold">
+                              Selected
+                            </span>
                           )}
                         </div>
                       </div>
@@ -502,7 +871,9 @@ export function PrintPreview({
 
           <div className="flex justify-end border-t border-card-border pt-4">
             <Button onClick={handlePrint} size="lg" className="gap-2 shadow-sm">
-              <Printer className="h-4 w-4" /> {t.printPreview.printReport} ({selectedIds.length} {selectedIds.length === 1 ? 'image' : 'images'})
+              <Printer className="h-4 w-4" /> {t.printPreview.printReport} (
+              {selectedIds.length}{" "}
+              {selectedIds.length === 1 ? "image" : "images"})
             </Button>
           </div>
         </CardContent>
@@ -584,8 +955,8 @@ export function PrintPreview({
             </div>
           </div>
 
-          {/* Patient Info Bar — removed on 12 images selection */}
-          {!is12Images && (
+          {/* Patient Info Bar — removed on images-only selection */}
+          {!isImagesOnlyMode && (
             <div
               className="patient-bar"
               style={{
@@ -619,13 +990,13 @@ export function PrintPreview({
         </div>
 
         {/* Content Area */}
-        {printMode === "with-content" ? (
+        {isReportWithImages ? (
           <div
             className="body-with-images"
             style={{
               display: "grid",
               gridTemplateColumns:
-                selectedImages.length > 0 ? "1fr 160px" : "1fr",
+                selectedImages.length > 0 ? "1fr 188px" : "1fr",
               gap: "14px",
             }}
           >
@@ -638,43 +1009,54 @@ export function PrintPreview({
                 />
               ) : (
                 <>
-                  {validSections.map((section, idx) => (
-                    <div
-                      key={section.title}
-                      className="section"
-                      style={{
-                        marginTop: idx === 0 ? "4px" : "14px",
-                        marginBottom: "8px",
-                      }}
-                    >
+                  {validSections.map((section, idx) => {
+                    const titleCol = section.titleColor || "#0f172a";
+                    const borderCol = section.titleColor || "#0f766e";
+                    return (
                       <div
-                        className="section-title"
+                        key={section.title}
+                        className="section"
                         style={{
-                          fontSize: "11.5px",
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: "#0f172a",
-                          marginBottom: "4px",
-                          paddingBottom: "2px",
-                          borderBottom: "2px solid #0f766e",
-                          display: "inline-block",
+                          marginTop: idx === 0 ? "4px" : "14px",
+                          marginBottom: "8px",
                         }}
                       >
-                        {section.title}
+                        <div
+                          className="section-title"
+                          style={{
+                            fontSize: "11.5px",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: titleCol,
+                            marginBottom: "4px",
+                            paddingBottom: "2px",
+                            borderBottom: `2px solid ${borderCol}`,
+                            display: "inline-block",
+                          }}
+                        >
+                          {section.title}
+                        </div>
+                        <div
+                          className="section-text tiptap-display"
+                          style={{
+                            fontSize: "11px",
+                            color: "#1e293b",
+                            lineHeight: 1.55,
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: section.content || "",
+                          }}
+                        />
                       </div>
-                      <div
-                        className="section-text tiptap-display"
-                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
-                        dangerouslySetInnerHTML={{
-                          __html: section.content || "",
-                        }}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {validDiagnoses.length > 0 && (
-                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
+                    <div
+                      className="section"
+                      style={{ marginTop: "14px", marginBottom: "8px" }}
+                    >
                       <div
                         className="section-title"
                         style={{
@@ -708,7 +1090,10 @@ export function PrintPreview({
                   )}
 
                   {validRecs.length > 0 && (
-                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
+                    <div
+                      className="section"
+                      style={{ marginTop: "14px", marginBottom: "8px" }}
+                    >
                       <div
                         className="section-title"
                         style={{
@@ -742,7 +1127,10 @@ export function PrintPreview({
                   )}
 
                   {hasFollowUp && (
-                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
+                    <div
+                      className="section"
+                      style={{ marginTop: "14px", marginBottom: "8px" }}
+                    >
                       <div
                         className="section-title"
                         style={{
@@ -761,14 +1149,21 @@ export function PrintPreview({
                       </div>
                       <div
                         className="section-text tiptap-display"
-                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
+                        style={{
+                          fontSize: "11px",
+                          color: "#1e293b",
+                          lineHeight: 1.55,
+                        }}
                         dangerouslySetInnerHTML={{ __html: report.followUp! }}
                       />
                     </div>
                   )}
 
                   {hasBiopsy && (
-                    <div className="section" style={{ marginTop: "14px", marginBottom: "8px" }}>
+                    <div
+                      className="section"
+                      style={{ marginTop: "14px", marginBottom: "8px" }}
+                    >
                       <div
                         className="section-title"
                         style={{
@@ -787,7 +1182,11 @@ export function PrintPreview({
                       </div>
                       <div
                         className="section-text"
-                        style={{ fontSize: "11px", color: "#1e293b", lineHeight: 1.55 }}
+                        style={{
+                          fontSize: "11px",
+                          color: "#1e293b",
+                          lineHeight: 1.55,
+                        }}
                       >
                         Taken from{" "}
                         <strong>
@@ -807,15 +1206,20 @@ export function PrintPreview({
             {selectedImages.length > 0 && (
               <div
                 className="images-sidebar"
-                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: selectedImages.length >= 6 ? "3px" : "5px",
+                }}
               >
                 {selectedImages.map((item) => (
                   <figure
                     key={item.id}
                     style={{
                       overflow: "hidden",
-                      borderRadius: "6px",
-                      border: "1px solid #e2e8f0",
+                      borderRadius: "4px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
                     }}
                   >
                     <img
@@ -823,7 +1227,7 @@ export function PrintPreview({
                       alt={item.label || item.filename}
                       style={{
                         width: "100%",
-                        aspectRatio: "4/3",
+                        height: "31mm",
                         objectFit: "cover",
                         display: "block",
                       }}
@@ -831,11 +1235,14 @@ export function PrintPreview({
                     <figcaption
                       style={{
                         background: "#f8fafc",
-                        padding: "3px 6px",
+                        padding: "2px 4px",
                         textAlign: "center",
-                        fontSize: "8px",
-                        fontWeight: 500,
-                        color: "#475569",
+                        fontSize: "7.5px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
                       {item.label || item.filename}
@@ -848,75 +1255,103 @@ export function PrintPreview({
         ) : (
           /* Images Only Mode */
           <div className="body-images-only">
-            {is12Images ? (
-              /* 12 Images single-page A4 layout */
-              <div>
-                <div
-                  className="images-grid-title"
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: "#0f766e",
-                    marginBottom: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>{t.printPreview.procedureImages} (12 Images A4 Single Page)</span>
-                  <span style={{ fontSize: "9px", color: "#64748b", fontWeight: 500 }}>
-                    {patient.fullName} · {patient.patientCode} · {formatDateTime(session.scheduledAt)}
-                  </span>
-                </div>
-                <div
-                  className="images-grid-12"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "5px",
-                    marginTop: "4px",
-                  }}
-                >
-                  {selectedImages.map((item, idx) => (
-                    <figure
-                      key={item.id}
+            {is15Images ? (
+              /* 15 Images single-page A4 layout: 3 columns x 5 rows */
+              <div
+                className="images-grid-15"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "4px",
+                  marginTop: "2px",
+                }}
+              >
+                {selectedImages.map((item, idx) => (
+                  <figure
+                    key={item.id}
+                    style={{
+                      overflow: "hidden",
+                      borderRadius: "4px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <img
+                      src={item.dataUrl}
+                      alt={item.label || item.filename}
                       style={{
-                        overflow: "hidden",
-                        borderRadius: "4px",
-                        border: "1px solid #cbd5e1",
+                        width: "100%",
+                        height: "37.5mm",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <figcaption
+                      style={{
                         background: "#f8fafc",
+                        padding: "1.5px 3px",
+                        textAlign: "center",
+                        fontSize: "7.5px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
-                      <img
-                        src={item.dataUrl}
-                        alt={item.label || item.filename}
-                        style={{
-                          width: "100%",
-                          height: "48mm",
-                          objectFit: "cover",
-                          display: "block",
-                        }}
-                      />
-                      <figcaption
-                        style={{
-                          background: "#f8fafc",
-                          padding: "2px 4px",
-                          textAlign: "center",
-                          fontSize: "8px",
-                          fontWeight: 600,
-                          color: "#334155",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.label || `Image ${idx + 1}`}
-                      </figcaption>
-                    </figure>
-                  ))}
-                </div>
+                      {item.label || `Image ${idx + 1}`}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            ) : is12Images ? (
+              /* 12 Images single-page A4 layout - without PROCEDURE IMAGES header */
+              <div
+                className="images-grid-12"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "5px",
+                  marginTop: "4px",
+                }}
+              >
+                {selectedImages.map((item, idx) => (
+                  <figure
+                    key={item.id}
+                    style={{
+                      overflow: "hidden",
+                      borderRadius: "4px",
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <img
+                      src={item.dataUrl}
+                      alt={item.label || item.filename}
+                      style={{
+                        width: "100%",
+                        height: "48mm",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <figcaption
+                      style={{
+                        background: "#f8fafc",
+                        padding: "2px 4px",
+                        textAlign: "center",
+                        fontSize: "8px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {item.label || `Image ${idx + 1}`}
+                    </figcaption>
+                  </figure>
+                ))}
               </div>
             ) : (
               /* 3-column grid for < 12 images */
@@ -981,8 +1416,8 @@ export function PrintPreview({
           </div>
         )}
 
-        {/* Footer — removed on 12 images selection */}
-        {!is12Images && (
+        {/* Footer — removed on images-only selection */}
+        {!isImagesOnlyMode && (
           <div
             className="print-footer"
             style={{
@@ -991,6 +1426,9 @@ export function PrintPreview({
               borderTop: "1px solid #e2e8f0",
             }}
           >
+            <div style={{ fontSize: "9px", color: "#64748b" }}>
+              {settings.reportFooter}
+            </div>
             <div
               style={{
                 display: "flex",
@@ -1029,9 +1467,6 @@ export function PrintPreview({
                   {t.printPreview.signature}
                 </span>
               </div>
-            </div>
-            <div style={{ fontSize: "9px", color: "#64748b" }}>
-              {settings.reportFooter}
             </div>
           </div>
         )}
