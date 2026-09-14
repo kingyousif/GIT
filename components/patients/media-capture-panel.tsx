@@ -1516,10 +1516,10 @@ export function MediaCapturePanel({
                     .section-list { padding-left: 16px; }
                     .signature-line { width: 220px; border-top: 2px solid #0f172a; padding-top: 8px; text-align: center; }
                     .doctor-name-print { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 2px; }
-                    .signature-block { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+                    .signature-block { display: flex; justify-content: flex-start; }
                     .signature-label { font-size: 9.5px; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-                    .footer-text { font-size: 9px; color: #64748b; }
-                    .print-footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+                    .footer-text { font-size: 9px; color: #64748b; text-align: right; max-width: 60%; word-break: break-word; }
+                    .print-footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
                   </style></head><body>${decodeURIComponent(reportPreview.dataUrl.replace(/^data:text\/html;charset=utf-8,/, ""))}</body></html>`}
                   className="h-[60vh] w-full rounded-md border border-card-border bg-white"
                   title="Report preview"

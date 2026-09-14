@@ -11,6 +11,7 @@ import {
   Report,
 } from "@/lib/types";
 import { formatDateTime, getProcedureLabel } from "@/lib/utils";
+import { REPORT_HEADER_IMAGE } from "@/lib/header-image";
 
 function uuid() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -109,8 +110,7 @@ export function buildReportHtmlBody({
           </div>
         </div>
         <div style="text-align: right;">
-          <div class="report-title"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAyMDAgNDAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwZDk0ODgiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjViNWIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNSAyMCBRMTAgOCAxOCAxNSBRMjUgMjIgMjggMTIgUTMyIDUgMzYgMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNnKSIgc3Ryb2tlLXdpZHRoPSIyLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjM2IiBjeT0iMTgiIHI9IjMiIGZpbGw9IiMwZDk0ODgiIG9wYWNpdHk9IjAuNiIvPjx0ZXh0IHg9IjQ1IiB5PSIyNiIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsIHNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMGY3NjZlIj5FbmRvc2NvcHkgUmVwb3J0PC90ZXh0Pjwvc3ZnPg==" alt="Endoscopy Report" style="height:40px;" /></div>
-          <div class="report-status">${report.status === "final" ? '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxNDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMzgiIGhlaWdodD0iMjYiIHJ4PSIxMyIgZmlsbD0iI2VjZmRmNSIgc3Ryb2tlPSIjMTBiOTgxIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xOCAxNCBMMjMgMTkgTDMwIDExIiBmaWxsPSJub25lIiBzdHJva2U9IiMwNTk2NjkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48dGV4dCB4PSIzOCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDU5NjY5Ij5GaW5hbCBSZXBvcnQ8L3RleHQ+PC9zdmc+" alt="Final Report" style="height:24px;" />' : '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxMDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSI5OCIgaGVpZ2h0PSIyNiIgcng9IjEzIiBmaWxsPSIjZmVmM2M3IiBzdHJva2U9IiNmNTljMTEiIHN0cm9rZS13aWR0aD0iMS41Ii8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxNCIgcj0iNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZDk3NzA2IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xNSAxMSBBNSA1IDAgMSAxIDE1IDE3IiBmaWxsPSJub25lIiBzdHJva2U9IiNkOTc3MDYiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1kYXNoYXJyYXk9IjIgMiIvPjx0ZXh0IHg9IjI4IiB5PSIxOCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNkOTc3MDYiPkRyYWZ0PC90ZXh0Pjwvc3ZnPg==" alt="Draft" style="height:24px;" />'}</div>
+          <div class="report-title"><img src="${REPORT_HEADER_IMAGE}" alt="Endoscopy Report" style="height:40px; object-fit: contain;" /></div>
         </div>
       </div>
 
@@ -128,16 +128,14 @@ export function buildReportHtmlBody({
       ${reportBodyHtml}
     </div>
 
-    <div class="print-footer"> 
-       <div class="footer-text">${escapeHtml(settings.reportFooter)}</div>
-   
-      <div class="signature-block">
-        <div class="signature-line">
+    <div class="print-footer" style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;"> 
+      <div class="signature-block" style="display: flex; justify-content: flex-start;">
+        <div class="signature-line" style="width: 220px; border-top: 2px solid #0f172a; padding-top: 8px; text-align: center;">
           <div class="doctor-name-print" style="font-size:15px; font-weight:800; color:#0f172a; margin-bottom:2px;">${escapeHtml(report.doctorName)}</div>
-          <span class="signature-label" style="font-size:9.5px; color:#64748b; font-weight:500;">Signature</span>
+          <span class="signature-label" style="font-size:9.5px; color:#64748b; font-weight:500; text-transform: uppercase; letter-spacing: 0.05em;">Signature</span>
         </div>
       </div>
-      
+      <div class="footer-text" style="font-size:9px; color:#64748b; text-align: right; max-width: 60%; word-break: break-word;">${escapeHtml(settings.reportFooter)}</div>
     </div>
   `;
 }

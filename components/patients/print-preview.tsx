@@ -1,18 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  ImageIcon,
-  FileText,
-  Printer,
-} from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/shared/empty-state";
+import { useLocale } from "@/hooks/use-locale";
+import { REPORT_HEADER_IMAGE } from "@/lib/header-image";
 import {
   AppSettings,
   MediaFile,
@@ -21,10 +14,21 @@ import {
   Report,
 } from "@/lib/types";
 import { formatDateTime, getProcedureLabel } from "@/lib/utils";
-import { useLocale } from "@/hooks/use-locale";
+import {
+  FileText,
+  ImageIcon,
+  Printer
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type PrintMode = "report-5" | "report-6" | "images-only" | "images-15";
+
+function byCapturedAt(a: MediaFile, b: MediaFile) {
+  const aTime = new Date(a.capturedAt).getTime();
+  const bTime = new Date(b.capturedAt).getTime();
+  return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
+}
 
 function getModeLimit(mode: PrintMode): number {
   switch (mode) {
@@ -53,7 +57,7 @@ function getStoredMode(sessionId: string): PrintMode {
       return saved as PrintMode;
     }
     if (saved === "with-content") return "report-5";
-  } catch {}
+  } catch { }
   return "report-5";
 }
 
@@ -123,7 +127,7 @@ function getStoredSelection(
         }
       }
     }
-  } catch {}
+  } catch { }
   return availableMedia.slice(0, limit).map((m) => m.id);
 }
 
@@ -153,7 +157,10 @@ export function PrintPreview({
 }) {
   const { t } = useLocale();
   const imageMedia = useMemo(
-    () => media.filter((item) => item.type === "image"),
+    () =>
+      media
+        .filter((item) => item.type === "image")
+        .sort(byCapturedAt),
     [media],
   );
   const [printMode, setPrintMode] = useState<PrintMode>(() =>
@@ -183,6 +190,7 @@ export function PrintPreview({
 
   const selectedImages = imageMedia
     .filter((item) => selectedIds.includes(item.id))
+    .sort(byCapturedAt)
     .slice(0, maxImages);
 
   const isReportWithImages =
@@ -225,7 +233,7 @@ export function PrintPreview({
           `endo_print_sel_${session.id}_${printMode}`,
           JSON.stringify(next),
         );
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -238,7 +246,7 @@ export function PrintPreview({
         `endo_print_sel_${session.id}_${printMode}`,
         JSON.stringify(topImages),
       );
-    } catch {}
+    } catch { }
     toast.success(`Selected first ${topImages.length} image(s).`);
   };
 
@@ -249,14 +257,14 @@ export function PrintPreview({
         `endo_print_sel_${session.id}_${printMode}`,
         JSON.stringify([]),
       );
-    } catch {}
+    } catch { }
   };
 
   const handleModeChange = (newMode: PrintMode) => {
     setPrintMode(newMode);
     try {
       localStorage.setItem(`endo_print_mode_${session.id}`, newMode);
-    } catch {}
+    } catch { }
     const limit = getModeLimit(newMode);
     const stored = getStoredSelection(session.id, newMode, imageMedia, limit);
     setSelectedIds(stored);
@@ -272,6 +280,7 @@ export function PrintPreview({
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <base href="${typeof window !== "undefined" ? window.location.origin : ""}/" />
   <title>Endoscopy Report - ${patient.fullName}</title>
   <style>
     @page { size: A4; margin: ${isImagesOnlyMode ? "5mm" : "8mm"}; }
@@ -532,8 +541,16 @@ export function PrintPreview({
       text-overflow: ellipsis;
     }
 
-    .print-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
-    .signature-block { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+    .print-footer { 
+      margin-top: 24px; 
+      padding-top: 12px; 
+      border-top: 1px solid #e2e8f0; 
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .signature-block { display: flex; justify-content: flex-start; }
     .signature-line {
       width: 220px;
       border-top: 2px solid #0f172a;
@@ -554,7 +571,13 @@ export function PrintPreview({
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .footer-text { font-size: 9px; color: #64748b; }
+    .footer-text { 
+      font-size: 9px; 
+      color: #64748b; 
+      text-align: right; 
+      max-width: 60%;
+      word-break: break-word;
+    }
 
     @media print {
       .no-print {
@@ -587,13 +610,40 @@ export function PrintPreview({
   ${printContent}
   <script>
     window.addEventListener('load', function() {
-      setTimeout(function() {
-        try {
-          window.print();
-        } catch (err) {
-          console.error(err);
+      var imgs = Array.from(document.images || []);
+      var pending = imgs.filter(function(img) { return !img.complete; });
+      function doPrint() {
+        setTimeout(function() {
+          try {
+            window.print();
+          } catch (err) {
+            console.error(err);
+          }
+        }, 300);
+      }
+      if (pending.length === 0) {
+        doPrint();
+      } else {
+        var remaining = pending.length;
+        var finished = false;
+        function checkDone() {
+          remaining--;
+          if (remaining <= 0 && !finished) {
+            finished = true;
+            doPrint();
+          }
         }
-      }, 400);
+        pending.forEach(function(img) {
+          img.addEventListener('load', checkDone);
+          img.addEventListener('error', checkDone);
+        });
+        setTimeout(function() {
+          if (!finished) {
+            finished = true;
+            doPrint();
+          }
+        }, 2000);
+      }
     });
   </script>
 </body>
@@ -647,11 +697,10 @@ export function PrintPreview({
             <button
               type="button"
               onClick={() => handleModeChange("report-5")}
-              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
-                printMode === "report-5"
-                  ? "border-primary bg-primary/5 shadow-xs"
-                  : "border-card-border hover:border-primary/50"
-              }`}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${printMode === "report-5"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-card-border hover:border-primary/50"
+                }`}
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <FileText className="h-4.5 w-4.5" />
@@ -669,11 +718,10 @@ export function PrintPreview({
             <button
               type="button"
               onClick={() => handleModeChange("report-6")}
-              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
-                printMode === "report-6"
-                  ? "border-primary bg-primary/5 shadow-xs"
-                  : "border-card-border hover:border-primary/50"
-              }`}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${printMode === "report-6"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-card-border hover:border-primary/50"
+                }`}
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <FileText className="h-4.5 w-4.5" />
@@ -691,11 +739,10 @@ export function PrintPreview({
             <button
               type="button"
               onClick={() => handleModeChange("images-only")}
-              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
-                printMode === "images-only"
-                  ? "border-primary bg-primary/5 shadow-xs"
-                  : "border-card-border hover:border-primary/50"
-              }`}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${printMode === "images-only"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-card-border hover:border-primary/50"
+                }`}
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <ImageIcon className="h-4.5 w-4.5" />
@@ -713,11 +760,10 @@ export function PrintPreview({
             <button
               type="button"
               onClick={() => handleModeChange("images-15")}
-              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${
-                printMode === "images-15"
-                  ? "border-primary bg-primary/5 shadow-xs"
-                  : "border-card-border hover:border-primary/50"
-              }`}
+              className={`flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition ${printMode === "images-15"
+                ? "border-primary bg-primary/5 shadow-xs"
+                : "border-card-border hover:border-primary/50"
+                }`}
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <ImageIcon className="h-4.5 w-4.5" />
@@ -741,11 +787,10 @@ export function PrintPreview({
             <div className="sticky top-2 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-card/95 p-3.5 shadow-lg backdrop-blur-md transition-all">
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-transform ${
-                    selectedIds.length === maxImages
-                      ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 scale-105 ring-2 ring-amber-500/30"
-                      : "bg-primary/15 text-primary"
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-transform ${selectedIds.length === maxImages
+                    ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 scale-105 ring-2 ring-amber-500/30"
+                    : "bg-primary/15 text-primary"
+                    }`}
                 >
                   {selectedIds.length}
                 </div>
@@ -820,22 +865,23 @@ export function PrintPreview({
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {imageMedia.map((item) => {
-                    const selectedIdx = selectedIds.indexOf(item.id);
-                    const checked = selectedIdx !== -1;
+                    const printIdx = selectedImages.findIndex(
+                      (image) => image.id === item.id,
+                    );
+                    const checked = printIdx !== -1;
                     return (
                       <div
                         key={item.id}
                         onClick={() => toggleImage(item.id)}
-                        className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition ${
-                          checked
-                            ? "border-primary ring-2 ring-primary/25 bg-primary/5 shadow-xs"
-                            : "border-card-border hover:border-primary/50 hover:shadow-xs"
-                        }`}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition ${checked
+                          ? "border-primary ring-2 ring-primary/25 bg-primary/5 shadow-xs"
+                          : "border-card-border hover:border-primary/50 hover:shadow-xs"
+                          }`}
                       >
                         {/* Numbered order badge for selected images */}
                         {checked && (
                           <div className="absolute right-2 top-2 z-10 flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground shadow-md animate-in zoom-in-75 duration-150">
-                            #{selectedIdx + 1}
+                            #{printIdx + 1}
                           </div>
                         )}
                         <div className="absolute left-2 top-2 z-10">
@@ -932,9 +978,12 @@ export function PrintPreview({
             <div style={{ textAlign: "right" }}>
               <div className="report-title">
                 <img
-                  src="/image/image.png"
+                  src={REPORT_HEADER_IMAGE}
                   alt={t.printPreview.endoscopyReport}
-                  style={{ height: "40px" }}
+                  style={{ height: "40px", objectFit: "contain", display: "inline-block" }}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = "/image/image.png";
+                  }}
                 />
               </div>
               {/* <div className="report-status">
@@ -1424,19 +1473,22 @@ export function PrintPreview({
               marginTop: "24px",
               paddingTop: "12px",
               borderTop: "1px solid #e2e8f0",
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: "16px",
             }}
           >
-            <div style={{ fontSize: "9px", color: "#64748b" }}>
-              {settings.reportFooter}
-            </div>
+            {/* Left: Doctor Name and Signature */}
             <div
+              className="signature-block"
               style={{
                 display: "flex",
-                justifyContent: "flex-end",
-                marginBottom: "16px",
+                justifyContent: "flex-start",
               }}
             >
               <div
+                className="signature-line"
                 style={{
                   width: "220px",
                   borderTop: "2px solid #0f172a",
@@ -1445,6 +1497,7 @@ export function PrintPreview({
                 }}
               >
                 <div
+                  className="doctor-name-print"
                   style={{
                     fontSize: "15px",
                     fontWeight: 800,
@@ -1456,6 +1509,7 @@ export function PrintPreview({
                   {report.doctorName}
                 </div>
                 <span
+                  className="signature-label"
                   style={{
                     fontSize: "9.5px",
                     fontWeight: 500,
@@ -1467,6 +1521,20 @@ export function PrintPreview({
                   {t.printPreview.signature}
                 </span>
               </div>
+            </div>
+
+            {/* Right: Footer Setting */}
+            <div
+              className="footer-text"
+              style={{
+                fontSize: "9px",
+                color: "#64748b",
+                textAlign: "right",
+                maxWidth: "60%",
+                wordBreak: "break-word",
+              }}
+            >
+              {settings.reportFooter}
             </div>
           </div>
         )}
