@@ -5,17 +5,25 @@ import { User } from '../db/models.js';
 export async function authRoutes(app: FastifyInstance) {
   // ===== Frontend session routes =====
 
-  // POST /api/auth — set session cookie
+  // POST /api/auth — set session cookie from a verified user
   app.post('/api/auth', async (request, reply) => {
-    const { user } = request.body as { user: Record<string, unknown> };
-    if (!user) return reply.status(400).send({ error: 'user object required' });
-    reply.setCookie('endo_session', JSON.stringify(user), {
+    const { user } = request.body as { user?: { id?: string } };
+    if (!user?.id) return reply.status(400).send({ error: 'user object required' });
+    const dbUser = await User.findById(user.id);
+    if (!dbUser || !dbUser.active) return reply.status(401).send({ error: 'Invalid session' });
+    const payload = {
+      id: dbUser.id,
+      username: dbUser.username,
+      displayName: dbUser.displayName,
+      role: dbUser.role,
+    };
+    reply.setCookie('endo_session', JSON.stringify(payload), {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30,
     });
-    return { success: true };
+    return { success: true, user: payload };
   });
 
   // GET /api/auth — get current session

@@ -43,6 +43,8 @@ const ckb: DeepString<typeof en> = {
     type: "جۆر",
     status: "دۆخ",
     never: "هەرگیز",
+    years: "ساڵ",
+    year: "ساڵ",
   },
 
   auth: {

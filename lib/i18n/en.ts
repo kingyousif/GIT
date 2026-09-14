@@ -38,6 +38,8 @@ const en = {
     type: 'Type',
     status: 'Status',
     never: 'Never',
+    years: 'years',
+    year: 'year',
   },
 
   // Auth / Login
@@ -171,7 +173,7 @@ const en = {
     noHistory: 'No prior sessions',
     noHistoryDesc: 'This patient has no recorded endoscopy history yet.',
     notFound: 'Patient session not found',
-    notFoundDesc: 'The requested procedure session could not be loaded. It may have been removed from LocalStorage.',
+    notFoundDesc: 'This visit could not be loaded. It may still be saving, or it may have been removed.',
     tabInfo: 'Patient Info',
     tabMedia: 'Media Capture',
     tabReport: 'Report Writing',

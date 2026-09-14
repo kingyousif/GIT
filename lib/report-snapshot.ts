@@ -117,7 +117,7 @@ export function buildReportHtmlBody({
       <div class="patient-bar">
         <div><div class="info-cell-label">Patient</div><div class="info-cell-value">${escapeHtml(patient.fullName)}</div></div>
         <div><div class="info-cell-label">Code</div><div class="info-cell-value">${escapeHtml(patient.patientCode)}</div></div>
-        <div><div class="info-cell-label">Age / Gender</div><div class="info-cell-value">${patient.age} / ${escapeHtml(patient.gender)}</div></div>
+        <div><div class="info-cell-label">Age / Gender</div><div class="info-cell-value">${patient.age} years / ${escapeHtml(patient.gender)}</div></div>
         <div><div class="info-cell-label">Date</div><div class="info-cell-value">${escapeHtml(formatDateTime(session.scheduledAt))}</div></div>
         <div><div class="info-cell-label">Doctor</div><div class="info-cell-value">${escapeHtml(report.doctorName)}</div></div>
         <div><div class="info-cell-label">Procedure</div><div class="info-cell-value">${escapeHtml(getProcedureLabel(session.procedureType))}</div></div>

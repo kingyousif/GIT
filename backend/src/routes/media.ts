@@ -14,13 +14,14 @@ function safeName(input: string): string {
 }
 
 async function getSessionFolder(sessionId: string, fields?: Record<string, string>): Promise<string> {
-  // Use fields sent by the client (patientName, patientCode, procedureType, scheduledAt)
-  const patientName = safeName(fields?.patientName || 'unknown');
-  const patientCode = safeName(fields?.patientCode || 'no-code');
-  const date = safeName((fields?.scheduledAt || '').slice(0, 10) || (fields?.capturedAt || '').slice(0, 10) || 'no-date');
-  const proc = safeName(fields?.procedureType || 'session');
-
-  return `${patientName}__${patientCode}__${date}__${proc}`;
+  // Folders include sessionId so two visits never share storage even if
+  // they have the same patient, date, and procedure type.
+  if (!fields?.patientName) return sessionId;
+  const patientName = safeName(fields.patientName);
+  const patientCode = safeName(fields.patientCode || 'no-code');
+  const date = safeName((fields.scheduledAt || '').slice(0, 10) || (fields.capturedAt || '').slice(0, 10) || 'no-date');
+  const proc = safeName(fields.procedureType || 'session');
+  return `${patientName}__${patientCode}__${date}__${proc}__${safeName(sessionId)}`;
 }
 
 function getSubfolder(type: string): string {

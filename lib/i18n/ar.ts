@@ -43,6 +43,8 @@ const ar: DeepString<typeof en> = {
     type: 'النوع',
     status: 'الحالة',
     never: 'أبداً',
+    years: 'سنة',
+    year: 'سنة',
   },
 
   auth: {

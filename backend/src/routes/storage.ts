@@ -9,6 +9,70 @@ function toReportResponse(doc: any) {
   return report;
 }
 
+function toDocId(value: any) {
+  return value?.id || value?._id || randomUUID();
+}
+
+function patientFields(p: any) {
+  return {
+    _id: toDocId(p),
+    patientCode: p.patientCode,
+    fullName: p.fullName,
+    age: p.age,
+    gender: p.gender,
+    phone: p.phone,
+    address: p.address,
+    referredBy: p.referredBy,
+    createdAt: p.createdAt || new Date().toISOString(),
+  };
+}
+
+function sessionFields(s: any) {
+  return {
+    _id: toDocId(s),
+    patientId: s.patientId,
+    procedureType: s.procedureType,
+    doctorName: s.doctorName,
+    scheduledAt: s.scheduledAt,
+    status: s.status,
+    indication: s.indication,
+    preparation: s.preparation,
+    sedation: s.sedation,
+    findings: s.findings,
+    questionnaireAnswers: s.questionnaireAnswers,
+    createdAt: s.createdAt || new Date().toISOString(),
+    completedAt: s.completedAt,
+  };
+}
+
+function templateFields(t: any) {
+  return {
+    _id: toDocId(t),
+    name: t.name,
+    procedureType: t.procedureType,
+    sections: t.sections,
+    diagnoses: t.diagnoses,
+  };
+}
+
+async function syncCollection(Model: any, items: unknown, mapFn: (item: any) => Record<string, unknown>) {
+  const docs = (Array.isArray(items) ? items : []).map(mapFn);
+  const ids = docs.map((d) => d._id);
+  if (docs.length > 0) {
+    await Model.bulkWrite(
+      docs.map((d) => ({
+        replaceOne: {
+          filter: { _id: d._id },
+          replacement: d,
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+  await Model.deleteMany(ids.length ? { _id: { $nin: ids } } : {});
+}
+
 function reportFields(body: any, id?: string) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error("Report payload must be an object.");
@@ -112,6 +176,84 @@ export async function storageRoutes(app: FastifyInstance) {
     }
   });
 
+  function toEntity(doc: any) {
+    const copy = { ...doc };
+    copy.id = copy._id;
+    delete copy._id;
+    return copy;
+  }
+
+  app.post("/api/patients", async (request, reply) => {
+    try {
+      const fields = patientFields(request.body);
+      await Patient.create(fields);
+      return reply.code(201).send({ success: true, id: fields._id, patient: toEntity(fields) });
+    } catch (err: any) {
+      if (err?.code === 11000) return reply.code(409).send({ error: "Patient code already exists." });
+      app.log.error(`Failed to create patient: ${err.message}`);
+      return reply.code(400).send({ error: err.message || "Failed to create patient." });
+    }
+  });
+
+  app.patch("/api/patients/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const body = request.body as any;
+      const fields = patientFields({ ...body, id });
+      delete (fields as any)._id;
+      const doc = await Patient.findByIdAndUpdate(id, { $set: fields }, { new: true, runValidators: true });
+      if (!doc) return reply.code(404).send({ error: "Patient not found." });
+      return reply.send({ success: true, patient: toEntity(doc.toObject()) });
+    } catch (err: any) {
+      app.log.error(`Failed to update patient ${id}: ${err.message}`);
+      return reply.code(400).send({ error: err.message || "Failed to update patient." });
+    }
+  });
+
+  app.post("/api/sessions", async (request, reply) => {
+    try {
+      const body = request.body as any;
+      if (!body?.patientId || !body?.procedureType || !body?.doctorName) {
+        return reply.code(400).send({ error: "patientId, procedureType, and doctorName are required." });
+      }
+      const fields = sessionFields(body);
+      await Session.create(fields);
+      return reply.code(201).send({ success: true, id: fields._id, session: toEntity(fields) });
+    } catch (err: any) {
+      app.log.error(`Failed to create session: ${err.message}`);
+      return reply.code(400).send({ error: err.message || "Failed to create session." });
+    }
+  });
+
+  app.get("/api/sessions/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const doc = await Session.findById(id).lean();
+    if (!doc) return reply.code(404).send({ error: "Session not found." });
+    return reply.send(toEntity(doc));
+  });
+
+  app.patch("/api/sessions/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const body = request.body as any;
+      const fields = sessionFields({ ...body, id });
+      delete (fields as any)._id;
+      const doc = await Session.findByIdAndUpdate(id, { $set: fields }, { new: true, runValidators: true });
+      if (!doc) return reply.code(404).send({ error: "Session not found." });
+      return reply.send({ success: true, session: toEntity(doc.toObject()) });
+    } catch (err: any) {
+      app.log.error(`Failed to update session ${id}: ${err.message}`);
+      return reply.code(400).send({ error: err.message || "Failed to update session." });
+    }
+  });
+
+  app.delete("/api/sessions/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const doc = await Session.findByIdAndDelete(id);
+    if (!doc) return reply.code(404).send({ error: "Session not found." });
+    return reply.send({ success: true });
+  });
+
   // GET /api/storage/:key
   app.get("/api/storage/:key", async (request, reply) => {
     const { key } = request.params as { key: string };
@@ -186,75 +328,13 @@ export async function storageRoutes(app: FastifyInstance) {
 
     try {
       if (key === "endo_patients") {
-        const patients = (Array.isArray(body) ? body : []) as any[];
-        await Patient.deleteMany({});
-        if (patients.length > 0) {
-          await Patient.insertMany(patients.map(p => ({
-            _id: p.id || p._id || randomUUID(),
-            patientCode: p.patientCode,
-            fullName: p.fullName,
-            age: p.age,
-            gender: p.gender,
-            phone: p.phone,
-            address: p.address,
-            referredBy: p.referredBy,
-            createdAt: p.createdAt
-          })));
-        }
+        await syncCollection(Patient, body, patientFields);
       } else if (key === "endo_sessions") {
-        const sessions = (Array.isArray(body) ? body : []) as any[];
-        await Session.deleteMany({});
-        if (sessions.length > 0) {
-          await Session.insertMany(sessions.map(s => ({
-            _id: s.id || s._id || randomUUID(),
-            patientId: s.patientId,
-            procedureType: s.procedureType,
-            doctorName: s.doctorName,
-            scheduledAt: s.scheduledAt,
-            status: s.status,
-            indication: s.indication,
-            preparation: s.preparation,
-            sedation: s.sedation,
-            findings: s.findings,
-            questionnaireAnswers: s.questionnaireAnswers,
-            createdAt: s.createdAt,
-            completedAt: s.completedAt
-          })));
-        }
+        await syncCollection(Session, body, sessionFields);
       } else if (key === "endo_reports") {
-        const reports = (Array.isArray(body) ? body : []) as any[];
-        await Report.deleteMany({});
-        if (reports.length > 0) {
-          await Report.insertMany(reports.map(r => ({
-            _id: r.id || r._id || randomUUID(),
-            sessionId: r.sessionId,
-            doctorName: r.doctorName,
-            templateUsed: r.templateUsed,
-            sections: r.sections,
-            diagnosis: r.diagnosis,
-            recommendations: r.recommendations,
-            followUp: r.followUp,
-            biopsy: r.biopsy,
-            biopsyLocation: r.biopsyLocation,
-            biopsySentTo: r.biopsySentTo,
-            freeReportHtml: r.freeReportHtml,
-            createdAt: r.createdAt,
-            updatedAt: r.updatedAt,
-            status: r.status
-          })));
-        }
+        await syncCollection(Report, Array.isArray(body) ? body : [], (r: any) => reportFields(r, toDocId(r)));
       } else if (key === "endo_templates") {
-        const templates = (Array.isArray(body) ? body : []) as any[];
-        await Template.deleteMany({});
-        if (templates.length > 0) {
-          await Template.insertMany(templates.map(t => ({
-            _id: t.id || t._id || randomUUID(),
-            name: t.name,
-            procedureType: t.procedureType,
-            sections: t.sections,
-            diagnoses: t.diagnoses
-          })));
-        }
+        await syncCollection(Template, body, templateFields);
       } else if (key === "endo_settings") {
         await Settings.findOneAndUpdate(
           { _key: "global" },

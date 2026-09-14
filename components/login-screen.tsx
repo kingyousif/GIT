@@ -48,8 +48,8 @@ export function LoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void 
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="absolute right-6 top-6 flex items-center gap-2">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
+      <div className="absolute end-4 top-4 flex items-center gap-2 sm:end-6 sm:top-6">
         <LanguageToggle />
         <ThemeToggle />
       </div>
@@ -75,13 +75,13 @@ export function LoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void 
               <div className="space-y-2">
                 <Label htmlFor="username">{t.auth.username}</Label>
                 <div className="relative">
-                  <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <User className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="username"
                     placeholder={t.auth.enterUsername}
                     value={username}
                     onChange={(e) => { setUsername(e.target.value); setError(''); }}
-                    className="pl-10"
+                    className="ps-10"
                     autoComplete="username"
                     autoFocus
                   />
@@ -91,20 +91,20 @@ export function LoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void 
               <div className="space-y-2">
                 <Label htmlFor="password">{t.auth.password}</Label>
                 <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Lock className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder={t.auth.enterPassword}
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                    className="pl-10 pr-10"
+                    className="pe-10 ps-10"
                     autoComplete="current-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -127,7 +127,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void 
 
         <div className="rounded-2xl border border-card-border bg-muted p-4 text-center text-sm text-muted-foreground">
           <p className="font-medium text-foreground">{t.auth.defaultAccounts}</p>
-          <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+          <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
             <div className="rounded-lg bg-card p-2">
               <p className="font-medium text-foreground">{t.auth.admin}</p>
               <p>admin / admin123</p>

@@ -88,8 +88,7 @@ export function NewPatientForm() {
     }
   }, [currentDoctor, defaultDoctor, selectedProcedure, setValue, settings]);
 
-  const onSubmit = (values: PatientRegistrationFormValues) => {
-    // Check if patient code already exists
+  const onSubmit = async (values: PatientRegistrationFormValues) => {
     const found = getPatientByCode(values.patientCode);
     if (found) {
       setExistingPatient(found);
@@ -98,10 +97,10 @@ export function NewPatientForm() {
       return;
     }
 
-    // Create new patient + session
     try {
-      const { session } = createPatientWithSession(values);
+      const { session } = await createPatientWithSession(values);
       toast.success(t.newPatient.patientCreated);
+      await refreshData({ refetch: false });
       maybeShowQuestionnaire(session.id, values.procedureType);
     } catch (error) {
       console.error(error);
@@ -124,23 +123,24 @@ export function NewPatientForm() {
     }
   };
 
-  const handleQuestionnaireSubmit = (answers: Record<string, string | string[] | boolean>) => {
+  const handleQuestionnaireSubmit = async (answers: Record<string, string | string[] | boolean>) => {
     if (createdSessionId) {
       if (Object.keys(answers).length > 0) {
-        updateSession(createdSessionId, { questionnaireAnswers: answers });
+        await updateSession(createdSessionId, { questionnaireAnswers: answers });
       }
-      refreshData();
+      await refreshData({ refetch: false });
       router.push(`/patients/${createdSessionId}`);
     }
     setShowQuestionnaire(false);
     setCreatedSessionId(null);
   };
 
-  const handleAssignExisting = () => {
+  const handleAssignExisting = async () => {
     if (!existingPatient || !pendingValues) return;
     try {
-      const { session } = createSessionForExistingPatient(existingPatient.id, pendingValues);
+      const { session } = await createSessionForExistingPatient(existingPatient.id, pendingValues);
       toast.success(t.newPatient.sessionAssigned);
+      await refreshData({ refetch: false });
       maybeShowQuestionnaire(session.id, pendingValues.procedureType);
     } catch (error) {
       console.error(error);
@@ -186,7 +186,10 @@ export function NewPatientForm() {
 
             <div className="space-y-2">
               <Label htmlFor="age">{t.newPatient.age}</Label>
-              <Input id="age" type="number" min={1} {...register('age')} />
+              <div className="flex items-center gap-2">
+                <Input id="age" type="number" min={1} max={120} className="flex-1" {...register('age')} />
+                <span className="shrink-0 text-sm font-medium text-muted-foreground">{t.common.years}</span>
+              </div>
               {errors.age ? <p className="text-sm text-rose-600">{errors.age.message}</p> : null}
             </div>
 

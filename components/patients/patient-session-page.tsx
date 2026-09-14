@@ -51,13 +51,10 @@ import {
   createSessionForExistingPatient,
   deleteReport,
   getReportsForSession,
+  ensureJoinedSession,
 } from "@/lib/queries";
 import { getMediaForSessionAsync, deleteMediaItemAsync } from "@/lib/media-db";
-import {
-  formatDateTime,
-  getProcedureLabel,
-  toDatetimeLocalValue,
-} from "@/lib/utils";
+import { formatAge, formatDateTime, getProcedureLabel, toDatetimeLocalValue } from "@/lib/utils";
 import {
   MediaFile,
   PatientSessionJoined,
@@ -116,6 +113,8 @@ export function PatientSessionPage() {
   const router = useRouter();
   const { dataVersion, settings, role, refreshData } = useAppState();
   const [record, setRecord] = useState<PatientSessionJoined | null>(null);
+  const [lookupDoneForId, setLookupDoneForId] = useState<string | null>(null);
+  const [savingVisit, setSavingVisit] = useState(false);
   const [media, setMedia] = useState<MediaFile[]>([]);
   const [history, setHistory] = useState<PatientSessionJoined["session"][]>([]);
   const [editOpen, setEditOpen] = useState(false);
@@ -157,9 +156,13 @@ export function PatientSessionPage() {
   }, [sessionReports, selectedPrintReportId]);
 
   useEffect(() => {
-    const joined = getJoinedSessionById(params.id);
-    setRecord(joined);
-    if (joined) {
+    let cancelled = false;
+    const load = async () => {
+      let joined = getJoinedSessionById(params.id) ?? (await ensureJoinedSession(params.id));
+      if (cancelled) return;
+      setRecord(joined);
+      setLookupDoneForId(params.id);
+      if (!joined) return;
       setHistory(getSessionsForPatient(joined.patient.id));
       setEditValues({
         fullName: joined.patient.fullName,
@@ -182,9 +185,15 @@ export function PatientSessionPage() {
         procedureType: joined.session.procedureType,
         scheduledAt: joined.session.scheduledAt,
       })
-        .then(setMedia)
+        .then((items) => {
+          if (!cancelled) setMedia(items);
+        })
         .catch(console.error);
-    }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [dataVersion, params.id]);
 
   const visibleTabs = useMemo(
@@ -200,13 +209,22 @@ export function PatientSessionPage() {
     ? (searchParams.get("tab") ?? visibleTabs[0]?.value)
     : visibleTabs[0]?.value;
 
-  if (!record || !settings) {
+  if (!settings || !record || record.session.id !== params.id) {
+    if (settings && lookupDoneForId === params.id) {
+      return (
+        <EmptyState
+          icon={<Activity className="h-8 w-8" />}
+          title={t.patientSession.notFound}
+          description={t.patientSession.notFoundDesc}
+        />
+      );
+    }
     return (
-      <EmptyState
-        icon={<Activity className="h-8 w-8" />}
-        title={t.patientSession.notFound}
-        description={t.patientSession.notFoundDesc}
-      />
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="rounded-2xl border border-card-border bg-card px-6 py-4 text-sm text-muted-foreground shadow-soft">
+          {t.common.loading}
+        </div>
+      </div>
     );
   }
 
@@ -251,7 +269,7 @@ export function PatientSessionPage() {
         title={`${record.patient.fullName} — ${record.patient.patientCode}`}
         description={`Scheduled ${formatDateTime(record.session.scheduledAt)} with ${record.session.doctorName}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={record.session.status} />
             <Button
               variant="outline"
@@ -259,7 +277,7 @@ export function PatientSessionPage() {
                 setNewVisitValues({
                   procedureType: settings.procedures[0]?.id || "",
                   doctorName: settings.doctors[0] || "",
-                  scheduledAt: new Date().toISOString().slice(0, 16),
+                  scheduledAt: toDatetimeLocalValue(new Date()),
                   indication: "",
                   preparation: "",
                   sedation: "conscious",
@@ -312,7 +330,7 @@ export function PatientSessionPage() {
                 />
                 <InfoBlock
                   label={t.newPatient.age}
-                  value={String(record.patient.age)}
+                  value={formatAge(record.patient.age, t.common.years)}
                 />
                 <InfoBlock
                   label={t.newPatient.gender}
@@ -427,12 +445,13 @@ export function PatientSessionPage() {
 
         <TabsContent value="media">
           <MediaCapturePanel
+            key={record.session.id}
             sessionId={record.session.id}
             patientName={record.patient.fullName}
             patientCode={record.patient.patientCode}
             procedureType={record.session.procedureType}
             scheduledAt={record.session.scheduledAt}
-            onMediaChanged={() => refreshData()}
+            onMediaChanged={() => refreshData({ refetch: false })}
             onOpenPrint={() =>
               router.replace(`/patients/${record.session.id}?tab=print`)
             }
@@ -715,16 +734,24 @@ export function PatientSessionPage() {
               />
             </Field>
             <Field label={t.newPatient.age}>
-              <Input
-                type="number"
-                value={String(editValues.age ?? "")}
-                onChange={(e) =>
-                  setEditValues((prev) => ({
-                    ...prev,
-                    age: Number(e.target.value),
-                  }))
-                }
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={120}
+                  className="flex-1"
+                  value={String(editValues.age ?? "")}
+                  onChange={(e) =>
+                    setEditValues((prev) => ({
+                      ...prev,
+                      age: Number(e.target.value),
+                    }))
+                  }
+                />
+                <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                  {t.common.years}
+                </span>
+              </div>
             </Field>
             <Field label={t.newPatient.gender}>
               <Select
@@ -952,7 +979,8 @@ export function PatientSessionPage() {
               {t.common.cancel}
             </Button>
             <Button
-              onClick={() => {
+              disabled={savingVisit}
+              onClick={async () => {
                 if (
                   !newVisitValues.procedureType ||
                   !newVisitValues.doctorName ||
@@ -961,8 +989,9 @@ export function PatientSessionPage() {
                   toast.error("Please fill in procedure, doctor, and date.");
                   return;
                 }
+                setSavingVisit(true);
                 try {
-                  const { session } = createSessionForExistingPatient(
+                  const { session } = await createSessionForExistingPatient(
                     record.patient.id,
                     {
                       procedureType: newVisitValues.procedureType,
@@ -978,17 +1007,19 @@ export function PatientSessionPage() {
                         | "general",
                     },
                   );
-                  refreshData();
                   setNewVisitOpen(false);
                   toast.success(t.patientSession.newVisitCreated);
+                  await refreshData({ refetch: false });
                   router.push(`/patients/${session.id}`);
                 } catch (err) {
                   console.error(err);
                   toast.error("Failed to create new visit.");
+                } finally {
+                  setSavingVisit(false);
                 }
               }}
             >
-              {t.patientSession.createVisit}
+              {savingVisit ? t.common.loading : t.patientSession.createVisit}
             </Button>
           </DialogFooter>
         </DialogContent>

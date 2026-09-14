@@ -1,8 +1,9 @@
 import { format, isSameDay, parseISO } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ProcedureType } from '@/lib/types';
-import { PROCEDURE_LABELS, STATUS_META } from '@/lib/constants';
+import { AppSettings, ProcedureType } from '@/lib/types';
+import { PROCEDURE_LABELS, STATUS_META, STORAGE_KEYS } from '@/lib/constants';
+import { getStorage } from '@/lib/storage';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,20 +30,16 @@ export function isTodayIso(value: string) {
 }
 
 export function getProcedureLabel(type: ProcedureType) {
-  // Try saved settings first (dynamic procedures), fall back to defaults, then to id
   if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem('endo_settings');
-      if (stored) {
-        const parsed = JSON.parse(stored) as { procedures?: { id: string; label: string }[] };
-        const found = parsed.procedures?.find((p) => p.id === type);
-        if (found) return found.label;
-      }
-    } catch {
-      // ignore
-    }
+    const settings = getStorage<AppSettings>(STORAGE_KEYS.settings);
+    const found = settings?.procedures?.find((p) => p.id === type);
+    if (found?.label) return found.label;
   }
-  return PROCEDURE_LABELS[type] ?? type;
+  return PROCEDURE_LABELS[type] ?? type.replace(/-/g, ' ');
+}
+
+export function formatAge(age: number, yearsLabel: string) {
+  return `${age} ${yearsLabel}`;
 }
 
 export function getStatusMeta(status: keyof typeof STATUS_META) {

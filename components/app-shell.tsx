@@ -215,15 +215,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     <PanelLeftOpen className="h-4 w-4" />
                   </Button>
                 )}
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{breadcrumbs.join(' / ')}</p>
-                  <h2 className="text-xl font-semibold text-foreground">{settings?.hospitalName}</h2>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-muted-foreground">{breadcrumbs.join(' / ')}</p>
+                  <h2 className="truncate text-lg font-semibold text-foreground sm:text-xl">{settings?.hospitalName}</h2>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <LanguageToggle />
                 <ThemeToggle />
-                <Badge variant="secondary" className="gap-1">
+                <Badge variant="secondary" className="hidden gap-1 sm:inline-flex">
                   <CalendarDays className="h-3.5 w-3.5" />
                   {format(new Date(), 'PPP')}
                 </Badge>

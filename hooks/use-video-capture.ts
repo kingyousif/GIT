@@ -115,27 +115,42 @@ export function useVideoCapture(sessionId: string) {
   }, [sessionId]);
 
   useEffect(() => {
+    setCapturedMedia([]);
+    setServerHasData(false);
+  }, [sessionId]);
+
+  useEffect(() => {
     // Wait until mediaContext is set before trying to read from local folder
     // (otherwise buildSessionFolder falls back to sessionId which is the wrong folder name)
+    let cancelled = false;
     if (!mediaContext?.patientName) {
-      // Still check server for data availability
       serverHasMediaForSession(sessionId)
-        .then(setServerHasData)
+        .then((hasData) => {
+          if (!cancelled) setServerHasData(hasData);
+        })
         .catch(() => {});
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
     getMediaForSessionAsync(sessionId, mediaContext)
       .then((items) => {
+        if (cancelled) return;
         setCapturedMedia(items);
         if (items.length === 0) {
           serverHasMediaForSession(sessionId)
-            .then(setServerHasData)
+            .then((hasData) => {
+              if (!cancelled) setServerHasData(hasData);
+            })
             .catch(() => {});
         } else {
           setServerHasData(false);
         }
       })
       .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId, mediaContext]);
 
   useEffect(() => {
@@ -605,7 +620,7 @@ export function useVideoCapture(sessionId: string) {
   const updateMedia = useCallback(
     async (mediaId: string, updates: Partial<MediaFile>) => {
       try {
-        await updateMediaItemAsync(mediaId, { ...updates, sessionId });
+        await updateMediaItemAsync(mediaId, { ...updates, sessionId }, mediaContext);
         await syncMedia();
         toast.success("Media updated.");
       } catch (error) {
@@ -613,13 +628,13 @@ export function useVideoCapture(sessionId: string) {
         toast.error("Failed to update media item.");
       }
     },
-    [syncMedia],
+    [mediaContext, sessionId, syncMedia],
   );
 
   const deleteMedia = useCallback(
     async (mediaId: string) => {
       try {
-        await deleteMediaItemAsync(mediaId, sessionId);
+        await deleteMediaItemAsync(mediaId, sessionId, mediaContext);
         await syncMedia();
         toast.success("Media deleted.");
       } catch (error) {
@@ -627,7 +642,7 @@ export function useVideoCapture(sessionId: string) {
         toast.error("Failed to delete media item.");
       }
     },
-    [sessionId, syncMedia],
+    [mediaContext, sessionId, syncMedia],
   );
 
   const clearLocalMedia = useCallback(async () => {

@@ -177,6 +177,7 @@ export const FONT_SIZES = [
   { label: '10 pt', value: '10pt' },
   { label: '11 pt', value: '11pt' },
   { label: '12 pt (Normal)', value: '12pt' },
+  { label: '13 pt', value: '13pt' },
   { label: '14 pt', value: '14pt' },
   { label: '16 pt (Medium)', value: '16pt' },
   { label: '18 pt (Large)', value: '18pt' },

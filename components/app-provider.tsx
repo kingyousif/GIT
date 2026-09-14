@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { seedAppData } from '@/lib/seed';
 import { getSettings as readSettings } from '@/lib/queries';
 import { initStorageCache } from '@/lib/storage';
-import { clearSession, getSession, initSession, seedDefaultUsers, setSession } from '@/lib/auth';
+import { clearSession, initSession, setSession } from '@/lib/auth';
 import { AppSettings, Role, UserAccount } from '@/lib/types';
 import { LocaleProvider } from '@/hooks/use-locale';
 import { LocalFolderProvider } from '@/hooks/use-local-folder';
@@ -15,9 +15,9 @@ interface AppContextValue {
   role: Role | null;
   settings: AppSettings | null;
   dataVersion: number;
-  login: (user: UserAccount) => void;
+  login: (user: UserAccount) => void | Promise<void>;
   logout: () => void;
-  refreshData: () => void;
+  refreshData: (options?: { refetch?: boolean }) => Promise<void>;
   refreshSettings: () => void;
 }
 
@@ -31,14 +31,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      // Load data from server files into memory cache
-      await initStorageCache();
-      seedAppData();
-      await seedDefaultUsers();
-      // Restore session from encrypted cookie
       const session = await initSession();
       setCurrentUser(session);
-      setSettings(readSettings());
+      if (session) {
+        await initStorageCache();
+        seedAppData();
+        setSettings(readSettings());
+      }
       setInitialized(true);
     };
     init();
@@ -46,8 +45,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const role = currentUser?.role ?? null;
 
-  const login = useCallback((user: UserAccount) => {
+  const login = useCallback(async (user: UserAccount) => {
     setSession(user);
+    await initStorageCache(true);
+    setSettings(readSettings());
     setCurrentUser(user);
     setDataVersion((prev) => prev + 1);
   }, []);
@@ -58,8 +59,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDataVersion((prev) => prev + 1);
   }, []);
 
-  const refreshData = useCallback(async () => {
-    await initStorageCache(true);
+  const refreshData = useCallback(async (options?: { refetch?: boolean }) => {
+    if (options?.refetch !== false) {
+      await initStorageCache(true);
+    }
     setSettings(readSettings());
     setDataVersion((prev) => prev + 1);
   }, []);

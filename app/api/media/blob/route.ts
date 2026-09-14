@@ -12,6 +12,10 @@ export async function GET(request: NextRequest) {
     if (range) {
       forwardHeaders['range'] = range;
     }
+    const cookie = request.headers.get('cookie');
+    if (cookie) {
+      forwardHeaders['cookie'] = cookie;
+    }
 
     const res = await fetch(url, { headers: forwardHeaders });
     if (!res.ok && res.status !== 206) {
@@ -45,6 +49,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': contentType,
+        ...(request.headers.get('cookie') ? { cookie: request.headers.get('cookie') as string } : {}),
       },
       body: Buffer.from(body),
     });

@@ -1,6 +1,6 @@
 import { isSameMonth, parseISO } from 'date-fns';
 import { STORAGE_KEYS, DEFAULT_SETTINGS, DEFAULT_TEMPLATES } from '@/lib/constants';
-import { clearEndoStorage, getMediaStorageKey, getStorage, removeStorage, setStorage, setStorageCache } from '@/lib/storage';
+import { clearEndoStorage, getMediaStorageKey, getStorage, getStorageAsync, removeStorage, setStorage, setStorageCache } from '@/lib/storage';
 import { apiFetch } from '@/lib/api-client';
 import {
   addMediaItemAsync,
@@ -8,7 +8,6 @@ import {
   deleteMediaForSessionAsync,
   deleteMediaItemAsync,
   getAllMediaAsync,
-  getMediaForSessionAsync,
   importMediaAsync,
   updateMediaItemAsync,
 } from '@/lib/media-db';
@@ -87,7 +86,34 @@ export function generatePatientCode() {
   return `ENT-${year}-${String(maxIndex + 1).padStart(4, '0')}`;
 }
 
-export function createPatientWithSession(values: PatientRegistrationFormValues) {
+async function persistCreatedPatient(patient: Patient) {
+  const response = await apiFetch('/api/patients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patient),
+  });
+  if (response.ok) {
+    setStorageCache(STORAGE_KEYS.patients, [...getPatients(), patient]);
+    return;
+  }
+  await setStorage(STORAGE_KEYS.patients, [...getPatients(), patient]);
+}
+
+async function persistCreatedSession(session: ProcedureSession) {
+  const payload = stripSessionRuntimeFields(session);
+  const response = await apiFetch('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (response.ok) {
+    setStorageCache(STORAGE_KEYS.sessions, [...getSessions().map(stripSessionRuntimeFields), payload]);
+    return;
+  }
+  await setStorage(STORAGE_KEYS.sessions, [...getSessions().map(stripSessionRuntimeFields), payload]);
+}
+
+export async function createPatientWithSession(values: PatientRegistrationFormValues) {
   const patient: Patient = {
     id: uuid(),
     patientCode: values.patientCode,
@@ -115,9 +141,8 @@ export function createPatientWithSession(values: PatientRegistrationFormValues) 
     createdAt: new Date().toISOString(),
   };
 
-  setStorage(STORAGE_KEYS.patients, [...getPatients(), patient]);
-  setStorage(STORAGE_KEYS.sessions, [...getSessions().map(stripSessionRuntimeFields), session]);
-  setStorage(getMediaStorageKey(session.id), []);
+  await persistCreatedPatient(patient);
+  await persistCreatedSession(session);
 
   return { patient, session };
 }
@@ -125,7 +150,7 @@ export function createPatientWithSession(values: PatientRegistrationFormValues) 
 /**
  * Create a new procedure session for an existing patient (returning patient).
  */
-export function createSessionForExistingPatient(patientId: string, values: Omit<PatientRegistrationFormValues, 'patientCode' | 'fullName' | 'age' | 'gender' | 'phone' | 'address' | 'referredBy'>) {
+export async function createSessionForExistingPatient(patientId: string, values: Omit<PatientRegistrationFormValues, 'patientCode' | 'fullName' | 'age' | 'gender' | 'phone' | 'address' | 'referredBy'>) {
   const patient = getPatientById(patientId);
   if (!patient) throw new Error('Patient not found.');
 
@@ -144,8 +169,7 @@ export function createSessionForExistingPatient(patientId: string, values: Omit<
     createdAt: new Date().toISOString(),
   };
 
-  setStorage(STORAGE_KEYS.sessions, [...getSessions().map(stripSessionRuntimeFields), session]);
-  setStorage(getMediaStorageKey(session.id), []);
+  await persistCreatedSession(session);
 
   return { patient, session };
 }
@@ -164,7 +188,16 @@ function stripSessionRuntimeFields(session: ProcedureSession): ProcedureSession 
 
 export async function updatePatient(patientId: string, updates: Partial<Patient>) {
   const next = getPatients().map((patient) => (patient.id === patientId ? { ...patient, ...updates } : patient));
-  await setStorage(STORAGE_KEYS.patients, next);
+  const patched = await apiFetch(`/api/patients/${encodeURIComponent(patientId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (patched.ok) {
+    setStorageCache(STORAGE_KEYS.patients, next);
+  } else {
+    await setStorage(STORAGE_KEYS.patients, next);
+  }
   return next.find((patient) => patient.id === patientId) ?? null;
 }
 
@@ -172,7 +205,18 @@ export async function updateSession(sessionId: string, updates: Partial<Procedur
   const next = getSessions().map((session) =>
     session.id === sessionId ? { ...session, ...updates, mediaFiles: updates.mediaFiles ?? session.mediaFiles } : stripSessionRuntimeFields(session),
   );
-  await setStorage(STORAGE_KEYS.sessions, next.map(stripSessionRuntimeFields));
+  const stored = next.map(stripSessionRuntimeFields);
+  const current = stored.find((session) => session.id === sessionId);
+  const patched = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(current ?? updates),
+  });
+  if (patched.ok) {
+    setStorageCache(STORAGE_KEYS.sessions, stored);
+  } else {
+    await setStorage(STORAGE_KEYS.sessions, stored);
+  }
   return next.find((session) => session.id === sessionId) ?? null;
 }
 
@@ -212,6 +256,30 @@ export function getJoinedSessions(): PatientSessionJoined[] {
 
 export function getJoinedSessionById(sessionId: string) {
   return getJoinedSessions().find((item) => item.session.id === sessionId) ?? null;
+}
+
+export async function ensureJoinedSession(sessionId: string) {
+  const existing = getJoinedSessionById(sessionId);
+  if (existing) return existing;
+
+  await Promise.all([
+    getStorageAsync(STORAGE_KEYS.sessions),
+    getStorageAsync(STORAGE_KEYS.patients),
+  ]);
+  const fromCache = getJoinedSessionById(sessionId);
+  if (fromCache) return fromCache;
+
+  const response = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  if (!response.ok) return null;
+  const session = (await response.json()) as ProcedureSession;
+  const current = getSessions().map(stripSessionRuntimeFields);
+  if (!current.some((item) => item.id === session.id)) {
+    setStorageCache(STORAGE_KEYS.sessions, [...current, stripSessionRuntimeFields(session)]);
+  }
+  if (session.patientId && !getPatientById(session.patientId)) {
+    await getStorageAsync(STORAGE_KEYS.patients);
+  }
+  return getJoinedSessionById(sessionId);
 }
 
 export function saveMedia(sessionId: string, media: MediaFile[]) {
@@ -408,8 +476,13 @@ export function upsertTemplate(template: ReportTemplate) {
 export async function removeSession(sessionId: string) {
   const nextSessions = getSessions().filter((session) => session.id !== sessionId);
   const nextReports = getReports().filter((report) => report.sessionId !== sessionId);
-  setStorage(STORAGE_KEYS.sessions, nextSessions.map(stripSessionRuntimeFields));
-  setStorage(STORAGE_KEYS.reports, nextReports);
+  const deleted = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  if (deleted.ok) {
+    setStorageCache(STORAGE_KEYS.sessions, nextSessions.map(stripSessionRuntimeFields));
+  } else {
+    await setStorage(STORAGE_KEYS.sessions, nextSessions.map(stripSessionRuntimeFields));
+  }
+  await setStorage(STORAGE_KEYS.reports, nextReports);
   removeStorage(getMediaStorageKey(sessionId));
   await deleteMediaForSessionAsync(sessionId);
 }

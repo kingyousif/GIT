@@ -16,7 +16,7 @@ import { LoadingTable } from '@/components/shared/loading-skeleton';
 import { useAppState } from '@/components/app-provider';
 import { getPatients, getSessions, getReportsForSession } from '@/lib/queries';
 import { Patient, ProcedureSession } from '@/lib/types';
-import { formatDateTime, getProcedureLabel } from '@/lib/utils';
+import { formatAge, formatDateTime, getProcedureLabel } from '@/lib/utils';
 import { useLocale } from '@/hooks/use-locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
@@ -194,8 +194,8 @@ export function PatientsTablePage() {
           <div className="space-y-2 xl:col-span-2">
             <Label>{t.common.search}</Label>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder={t.patientsTable.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="ps-9" placeholder={t.patientsTable.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
@@ -315,7 +315,7 @@ export function PatientsTablePage() {
                         >
                           <TableCell className="font-medium">{item.patient.patientCode}</TableCell>
                           <TableCell className="font-medium text-primary">{item.patient.fullName}</TableCell>
-                          <TableCell>{item.patient.age}</TableCell>
+                          <TableCell>{formatAge(item.patient.age, t.common.years)}</TableCell>
                           <TableCell className="capitalize">{item.patient.gender}</TableCell>
                           <TableCell>{item.patient.phone}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{item.patient.address || '-'}</TableCell>

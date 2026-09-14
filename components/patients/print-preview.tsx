@@ -1023,7 +1023,7 @@ export function PrintPreview({
               <InfoCell label="Code" value={patient.patientCode} />
               <InfoCell
                 label="Age / Gender"
-                value={`${patient.age} / ${patient.gender}`}
+                value={`${patient.age} years / ${patient.gender}`}
               />
               <InfoCell
                 label="Date"

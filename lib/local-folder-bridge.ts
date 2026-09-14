@@ -14,13 +14,29 @@ export function getFolderHandle(): FileSystemDirectoryHandle | null {
   return _dirHandle;
 }
 
-async function getSubDir(root: FileSystemDirectoryHandle, subPath: string): Promise<FileSystemDirectoryHandle> {
+async function getSubDir(
+  root: FileSystemDirectoryHandle,
+  subPath: string,
+  create = true,
+): Promise<FileSystemDirectoryHandle> {
   const parts = subPath.split('/').filter(Boolean);
   let current = root;
   for (const part of parts) {
-    current = await current.getDirectoryHandle(part, { create: true });
+    current = await current.getDirectoryHandle(part, { create });
   }
   return current;
+}
+
+async function getExistingDir(
+  root: FileSystemDirectoryHandle,
+  subPath: string,
+): Promise<FileSystemDirectoryHandle | null> {
+  if (!subPath) return root;
+  try {
+    return await getSubDir(root, subPath, false);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -63,7 +79,8 @@ export async function readFromLocalFolder(subPath: string): Promise<File | null>
     const parts = subPath.split('/');
     const fileName = parts.pop()!;
     const dirPath = parts.join('/');
-    const dir = dirPath ? await getSubDir(_dirHandle, dirPath) : _dirHandle;
+    const dir = dirPath ? await getExistingDir(_dirHandle, dirPath) : _dirHandle;
+    if (!dir) return null;
     const fileHandle = await dir.getFileHandle(fileName);
     return await fileHandle.getFile();
   } catch {
@@ -73,14 +90,34 @@ export async function readFromLocalFolder(subPath: string): Promise<File | null>
 
 /**
  * List files in a subdirectory of the local folder.
+ * Does not create missing folders.
  */
 export async function listLocalFolder(subPath: string): Promise<string[]> {
   if (!_dirHandle) return [];
   try {
-    const dir = subPath ? await getSubDir(_dirHandle, subPath) : _dirHandle;
+    const dir = subPath ? await getExistingDir(_dirHandle, subPath) : _dirHandle;
+    if (!dir) return [];
     const names: string[] = [];
     for await (const [name, handle] of (dir as any).entries()) {
       if (handle.kind === 'file') names.push(name);
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List immediate subdirectory names. Does not create missing folders.
+ */
+export async function listLocalDirectories(subPath = ''): Promise<string[]> {
+  if (!_dirHandle) return [];
+  try {
+    const dir = subPath ? await getExistingDir(_dirHandle, subPath) : _dirHandle;
+    if (!dir) return [];
+    const names: string[] = [];
+    for await (const [name, handle] of (dir as any).entries()) {
+      if (handle.kind === 'directory') names.push(name);
     }
     return names;
   } catch {
@@ -97,7 +134,8 @@ export async function deleteFromLocalFolder(subPath: string): Promise<boolean> {
     const parts = subPath.split('/');
     const fileName = parts.pop()!;
     const dirPath = parts.join('/');
-    const dir = dirPath ? await getSubDir(_dirHandle, dirPath) : _dirHandle;
+    const dir = dirPath ? await getExistingDir(_dirHandle, dirPath) : _dirHandle;
+    if (!dir) return false;
     await dir.removeEntry(fileName);
     return true;
   } catch {

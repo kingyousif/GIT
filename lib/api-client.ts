@@ -25,6 +25,7 @@ export function apiUrl(path: string): string {
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const options: RequestInit = {
     cache: 'no-store',
+    credentials: 'same-origin',
     ...init,
     headers: {
       ...init?.headers,

@@ -145,15 +145,15 @@ export async function initSession(): Promise<UserAccount | null> {
     if (res.ok) {
       const { user } = await res.json();
       if (user) {
-        // Cache in localStorage for synchronous access
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(user));
         return user;
       }
     }
   } catch {
-    // Fallback to localStorage
+    // Cookie session is required; do not trust a stale local-only user.
   }
-  return getSession();
+  window.localStorage.removeItem(SESSION_KEY);
+  return null;
 }
 
 export function setSession(user: UserAccount): void {

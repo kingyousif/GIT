@@ -7,6 +7,7 @@ import { connectDB } from './db/connection.js';
 import { authRoutes } from './routes/auth.js';
 import { mediaRoutes } from './routes/media.js';
 import { storageRoutes } from './routes/storage.js';
+import { registerAuthGuard } from './auth-guard.js';
 
 async function main() {
   // Connect to MongoDB
@@ -32,6 +33,7 @@ async function main() {
 
   await app.register(cookie, { secret: config.cookieSecret });
   await app.register(multipart, { limits: { fileSize: 500 * 1024 * 1024, files: 50 } });
+  await registerAuthGuard(app);
 
   // Health check
   app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
