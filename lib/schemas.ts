@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const patientRegistrationSchema = z.object({
   patientCode: z.string().min(1, 'Patient code is required.'),
   fullName: z.string().min(2, 'Full name is required.'),
+  dateOfBirth: z.string().optional(),
   age: z.coerce.number().int().min(1, 'Age is required.').max(120, 'Enter a valid age.'),
   gender: z.enum(['male', 'female']),
   phone: z.string().min(3, 'Phone number is required.'),

@@ -14,7 +14,19 @@ import {
   Report,
 } from "@/lib/types";
 import { formatDateTime, getProcedureLabel } from "@/lib/utils";
+import { formatDateOfBirth } from "@/lib/age";
 import {
+  getModeLimit,
+  hasStoredPrintPicks,
+  loadPrintVisit,
+  rememberPrintSelection,
+  restorePrintSelection,
+  toPrintPicks,
+  resolvePrintPicks,
+  type PrintMode,
+} from "@/lib/print-selection";
+import {
+  BookmarkCheck,
   FileText,
   ImageIcon,
   Printer
@@ -22,113 +34,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-type PrintMode = "report-5" | "report-6" | "images-only" | "images-15";
-
 function byCapturedAt(a: MediaFile, b: MediaFile) {
   const aTime = new Date(a.capturedAt).getTime();
   const bTime = new Date(b.capturedAt).getTime();
   return (Number.isNaN(aTime) ? 0 : aTime) - (Number.isNaN(bTime) ? 0 : bTime);
-}
-
-function getModeLimit(mode: PrintMode): number {
-  switch (mode) {
-    case "report-5":
-      return 5;
-    case "report-6":
-      return 6;
-    case "images-15":
-      return 15;
-    case "images-only":
-    default:
-      return 12;
-  }
-}
-
-function getStoredMode(sessionId: string): PrintMode {
-  if (typeof window === "undefined") return "report-5";
-  try {
-    const saved = localStorage.getItem(`endo_print_mode_${sessionId}`);
-    if (
-      saved === "report-5" ||
-      saved === "report-6" ||
-      saved === "images-only" ||
-      saved === "images-15"
-    ) {
-      return saved as PrintMode;
-    }
-    if (saved === "with-content") return "report-5";
-  } catch { }
-  return "report-5";
-}
-
-function getStoredSelection(
-  sessionId: string,
-  mode: PrintMode,
-  availableMedia: MediaFile[],
-  limit: number,
-): string[] {
-  if (typeof window === "undefined") {
-    return availableMedia.slice(0, limit).map((m) => m.id);
-  }
-  try {
-    const raw = localStorage.getItem(`endo_print_sel_${sessionId}_${mode}`);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .filter((id) => availableMedia.some((m) => m.id === id))
-          .slice(0, limit);
-      }
-    }
-    if (mode === "images-15") {
-      const raw12 = localStorage.getItem(
-        `endo_print_sel_${sessionId}_images-only`,
-      );
-      if (raw12 !== null) {
-        const parsed12 = JSON.parse(raw12);
-        if (Array.isArray(parsed12) && parsed12.length > 0) {
-          const base = parsed12.filter((id) =>
-            availableMedia.some((m) => m.id === id),
-          );
-          const unused = availableMedia
-            .filter((m) => !base.includes(m.id))
-            .map((m) => m.id);
-          return [...base, ...unused].slice(0, limit);
-        }
-      }
-    }
-    // Cross-pollinate from report-5 if switching to report-6 for the first time
-    if (mode === "report-6") {
-      const raw5 =
-        localStorage.getItem(`endo_print_sel_${sessionId}_report-5`) ||
-        localStorage.getItem(`endo_print_sel_${sessionId}_with-content`);
-      if (raw5 !== null) {
-        const parsed5 = JSON.parse(raw5);
-        if (Array.isArray(parsed5) && parsed5.length > 0) {
-          const base = parsed5.filter((id) =>
-            availableMedia.some((m) => m.id === id),
-          );
-          const unused = availableMedia
-            .filter((m) => !base.includes(m.id))
-            .map((m) => m.id);
-          return [...base, ...unused].slice(0, limit);
-        }
-      }
-    } else if (mode === "report-5") {
-      const rawOld = localStorage.getItem(
-        `endo_print_sel_${sessionId}_with-content`,
-      );
-      if (rawOld !== null) {
-        const parsedOld = JSON.parse(rawOld);
-        if (Array.isArray(parsedOld)) {
-          return parsedOld
-            .filter((id) => availableMedia.some((m) => m.id === id))
-            .slice(0, limit);
-        }
-      }
-    }
-  } catch { }
-  return availableMedia.slice(0, limit).map((m) => m.id);
 }
 
 function hasSectionContent(content?: string | null): boolean {
@@ -163,34 +72,42 @@ export function PrintPreview({
         .sort(byCapturedAt),
     [media],
   );
-  const [printMode, setPrintMode] = useState<PrintMode>(() =>
-    getStoredMode(session.id),
+  const [printMode, setPrintMode] = useState<PrintMode>(
+    () => loadPrintVisit(session.id).mode,
   );
 
   const maxImages = getModeLimit(printMode);
 
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    const initialMode = getStoredMode(session.id);
-    const limit = getModeLimit(initialMode);
-    return getStoredSelection(session.id, initialMode, imageMedia, limit);
+    const visit = loadPrintVisit(session.id, imageMedia);
+    return restorePrintSelection(session.id, visit.mode, imageMedia, getModeLimit(visit.mode));
   });
 
   const [imagesCollapsed, setImagesCollapsed] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const selectionRemembered = hasStoredPrintPicks(session.id, printMode) && selectedIds.length > 0;
 
-  // Sync / validate selectedIds when session, mode or imageMedia changes
   useEffect(() => {
     if (imageMedia.length === 0) return;
     setSelectedIds((current) => {
-      const valid = current.filter((id) => imageMedia.some((m) => m.id === id));
-      if (valid.length > 0) return valid.slice(0, maxImages);
-      return getStoredSelection(session.id, printMode, imageMedia, maxImages);
+      const stillValid = resolvePrintPicks(
+        toPrintPicks(current, imageMedia),
+        imageMedia,
+        maxImages,
+      );
+      if (current.length > 0) {
+        const unchanged =
+          stillValid.length === current.length &&
+          stillValid.every((id, index) => id === current[index]);
+        return unchanged ? current : stillValid;
+      }
+      return restorePrintSelection(session.id, printMode, imageMedia, maxImages);
     });
   }, [session.id, printMode, imageMedia, maxImages]);
 
-  const selectedImages = imageMedia
-    .filter((item) => selectedIds.includes(item.id))
-    .sort(byCapturedAt)
+  const selectedImages = selectedIds
+    .map((id) => imageMedia.find((item) => item.id === id))
+    .filter((item): item is MediaFile => Boolean(item))
     .slice(0, maxImages);
 
   const isReportWithImages =
@@ -228,12 +145,7 @@ export function PrintPreview({
       } else {
         next = [...prev, id];
       }
-      try {
-        localStorage.setItem(
-          `endo_print_sel_${session.id}_${printMode}`,
-          JSON.stringify(next),
-        );
-      } catch { }
+      rememberPrintSelection(session.id, printMode, next, imageMedia);
       return next;
     });
   };
@@ -241,33 +153,20 @@ export function PrintPreview({
   const handleSelectFirst = () => {
     const topImages = imageMedia.slice(0, maxImages).map((m) => m.id);
     setSelectedIds(topImages);
-    try {
-      localStorage.setItem(
-        `endo_print_sel_${session.id}_${printMode}`,
-        JSON.stringify(topImages),
-      );
-    } catch { }
+    rememberPrintSelection(session.id, printMode, topImages, imageMedia);
     toast.success(`Selected first ${topImages.length} image(s).`);
   };
 
   const handleClearAll = () => {
     setSelectedIds([]);
-    try {
-      localStorage.setItem(
-        `endo_print_sel_${session.id}_${printMode}`,
-        JSON.stringify([]),
-      );
-    } catch { }
+    rememberPrintSelection(session.id, printMode, [], imageMedia);
   };
 
   const handleModeChange = (newMode: PrintMode) => {
+    rememberPrintSelection(session.id, printMode, selectedIds, imageMedia);
     setPrintMode(newMode);
-    try {
-      localStorage.setItem(`endo_print_mode_${session.id}`, newMode);
-    } catch { }
     const limit = getModeLimit(newMode);
-    const stored = getStoredSelection(session.id, newMode, imageMedia, limit);
-    setSelectedIds(stored);
+    setSelectedIds(restorePrintSelection(session.id, newMode, imageMedia, limit));
   };
 
   const handlePrint = () => {
@@ -799,6 +698,12 @@ export function PrintPreview({
                     <span className="text-sm font-semibold text-foreground">
                       {selectedIds.length} / {maxImages} Images Selected
                     </span>
+                    {selectionRemembered && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                        <BookmarkCheck className="h-3 w-3" />
+                        {t.printPreview.remembered}
+                      </span>
+                    )}
                     {selectedIds.length === maxImages && (
                       <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
                         Max reached
@@ -806,7 +711,9 @@ export function PrintPreview({
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {printMode === "report-5"
+                    {selectionRemembered
+                      ? t.printPreview.rememberedDesc
+                      : printMode === "report-5"
                       ? "Selected 5 images appear in the right column beside the text"
                       : printMode === "report-6"
                         ? "Selected 6 images appear in the right column beside the text"
@@ -1023,7 +930,7 @@ export function PrintPreview({
               <InfoCell label="Code" value={patient.patientCode} />
               <InfoCell
                 label="Age / Gender"
-                value={`${patient.age} years / ${patient.gender}`}
+                value={`${patient.age} years / ${patient.gender}${formatDateOfBirth(patient.dateOfBirth) ? ` · ${formatDateOfBirth(patient.dateOfBirth)}` : ""}`}
               />
               <InfoCell
                 label="Date"

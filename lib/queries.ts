@@ -119,6 +119,7 @@ export async function createPatientWithSession(values: PatientRegistrationFormVa
     patientCode: values.patientCode,
     fullName: values.fullName,
     age: values.age,
+    dateOfBirth: values.dateOfBirth || undefined,
     gender: values.gender,
     phone: values.phone,
     address: values.address,
@@ -150,7 +151,7 @@ export async function createPatientWithSession(values: PatientRegistrationFormVa
 /**
  * Create a new procedure session for an existing patient (returning patient).
  */
-export async function createSessionForExistingPatient(patientId: string, values: Omit<PatientRegistrationFormValues, 'patientCode' | 'fullName' | 'age' | 'gender' | 'phone' | 'address' | 'referredBy'>) {
+export async function createSessionForExistingPatient(patientId: string, values: Omit<PatientRegistrationFormValues, 'patientCode' | 'fullName' | 'age' | 'dateOfBirth' | 'gender' | 'phone' | 'address' | 'referredBy'>) {
   const patient = getPatientById(patientId);
   if (!patient) throw new Error('Patient not found.');
 

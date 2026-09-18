@@ -27,6 +27,7 @@ import { Patient, PatientRegistrationFormValues, ProcedureQuestion, ProcedureTyp
 import { toDatetimeLocalValue } from '@/lib/utils';
 import { useLocale } from '@/hooks/use-locale';
 import { ProcedureQuestionnaire } from '@/components/patients/procedure-questionnaire';
+import { BirthDateAgeFields } from '@/components/patients/birth-date-age-fields';
 
 export function NewPatientForm() {
   const { t } = useLocale();
@@ -40,7 +41,8 @@ export function NewPatientForm() {
     () => ({
       patientCode: '',
       fullName: '',
-      age: 30,
+      age: undefined as unknown as number,
+      dateOfBirth: '',
       gender: 'male',
       phone: '',
       address: '',
@@ -184,14 +186,14 @@ export function NewPatientForm() {
               {errors.fullName ? <p className="text-sm text-rose-600">{errors.fullName.message}</p> : null}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="age">{t.newPatient.age}</Label>
-              <div className="flex items-center gap-2">
-                <Input id="age" type="number" min={1} max={120} className="flex-1" {...register('age')} />
-                <span className="shrink-0 text-sm font-medium text-muted-foreground">{t.common.years}</span>
-              </div>
-              {errors.age ? <p className="text-sm text-rose-600">{errors.age.message}</p> : null}
-            </div>
+            <BirthDateAgeFields
+              dateOfBirth={watch('dateOfBirth') ?? ''}
+              age={watch('age')}
+              onDateOfBirthChange={(value) => setValue('dateOfBirth', value, { shouldDirty: true, shouldValidate: true })}
+              onAgeChange={(value) => setValue('age', value === '' ? (undefined as unknown as number) : value, { shouldDirty: true, shouldValidate: true })}
+              dateError={errors.dateOfBirth?.message}
+              ageError={errors.age?.message}
+            />
 
             <div className="space-y-2">
               <Label>{t.newPatient.gender}</Label>

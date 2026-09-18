@@ -55,6 +55,8 @@ import {
 } from "@/lib/queries";
 import { getMediaForSessionAsync, deleteMediaItemAsync } from "@/lib/media-db";
 import { formatAge, formatDateTime, getProcedureLabel, toDatetimeLocalValue } from "@/lib/utils";
+import { formatDateOfBirth } from "@/lib/age";
+import { BirthDateAgeFields } from "@/components/patients/birth-date-age-fields";
 import {
   MediaFile,
   PatientSessionJoined,
@@ -66,6 +68,7 @@ import { useLocale } from "@/hooks/use-locale";
 const editSchema = z.object({
   fullName: z.string().min(2),
   age: z.coerce.number().min(1).max(120),
+  dateOfBirth: z.string().optional(),
   gender: z.enum(["male", "female"]),
   phone: z.string().min(3),
   address: z.string().optional(),
@@ -167,6 +170,7 @@ export function PatientSessionPage() {
       setEditValues({
         fullName: joined.patient.fullName,
         age: joined.patient.age,
+        dateOfBirth: joined.patient.dateOfBirth ?? "",
         gender: joined.patient.gender,
         phone: joined.patient.phone,
         address: joined.patient.address ?? "",
@@ -239,6 +243,7 @@ export function PatientSessionPage() {
       await updatePatient(record.patient.id, {
         fullName: parsed.data.fullName,
         age: parsed.data.age,
+        dateOfBirth: parsed.data.dateOfBirth || undefined,
         gender: parsed.data.gender,
         phone: parsed.data.phone,
         address: parsed.data.address,
@@ -327,6 +332,10 @@ export function PatientSessionPage() {
                 <InfoBlock
                   label={t.patientSession.patientCode}
                   value={record.patient.patientCode}
+                />
+                <InfoBlock
+                  label={t.newPatient.dateOfBirth}
+                  value={formatDateOfBirth(record.patient.dateOfBirth) || "—"}
                 />
                 <InfoBlock
                   label={t.newPatient.age}
@@ -666,7 +675,7 @@ export function PatientSessionPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="print">
+        <TabsContent value="print" keepMounted>
           {sessionReports.length > 0 ? (
             <div className="space-y-6">
               <Card>
@@ -694,6 +703,7 @@ export function PatientSessionPage() {
 
               {printReport && (
                 <PrintPreview
+                  key={record.session.id}
                   patient={record.patient}
                   session={record.session}
                   report={printReport}
@@ -733,26 +743,19 @@ export function PatientSessionPage() {
                 }
               />
             </Field>
-            <Field label={t.newPatient.age}>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={120}
-                  className="flex-1"
-                  value={String(editValues.age ?? "")}
-                  onChange={(e) =>
-                    setEditValues((prev) => ({
-                      ...prev,
-                      age: Number(e.target.value),
-                    }))
-                  }
-                />
-                <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                  {t.common.years}
-                </span>
-              </div>
-            </Field>
+            <BirthDateAgeFields
+              dateOfBirth={String(editValues.dateOfBirth ?? "")}
+              age={editValues.age ?? ""}
+              onDateOfBirthChange={(value) =>
+                setEditValues((prev) => ({ ...prev, dateOfBirth: value }))
+              }
+              onAgeChange={(value) =>
+                setEditValues((prev) => ({
+                  ...prev,
+                  age: value === "" ? "" : value,
+                }))
+              }
+            />
             <Field label={t.newPatient.gender}>
               <Select
                 value={String(editValues.gender ?? "male")}

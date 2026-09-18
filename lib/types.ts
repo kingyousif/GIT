@@ -16,6 +16,7 @@ export interface Patient {
   patientCode: string;
   fullName: string;
   age: number;
+  dateOfBirth?: string;
   gender: 'male' | 'female';
   phone: string;
   address?: string;
@@ -132,6 +133,7 @@ export interface PatientRegistrationFormValues {
   patientCode: string;
   fullName: string;
   age: number;
+  dateOfBirth?: string;
   gender: 'male' | 'female';
   phone: string;
   address?: string;

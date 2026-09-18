@@ -6,6 +6,7 @@ const PatientSchema = new Schema({
   patientCode: { type: String, required: true, unique: true },
   fullName: { type: String, required: true },
   age: { type: Number, required: true },
+  dateOfBirth: String,
   gender: { type: String, enum: ['male', 'female'], required: true },
   phone: { type: String, required: true },
   address: String,

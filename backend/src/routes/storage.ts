@@ -19,6 +19,7 @@ function patientFields(p: any) {
     patientCode: p.patientCode,
     fullName: p.fullName,
     age: p.age,
+    dateOfBirth: p.dateOfBirth || undefined,
     gender: p.gender,
     phone: p.phone,
     address: p.address,

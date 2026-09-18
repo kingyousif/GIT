@@ -66,9 +66,23 @@ export function TabsTrigger({
   );
 }
 
-export function TabsContent({ value, className, children }: React.HTMLAttributes<HTMLDivElement> & { value: string }) {
+export function TabsContent({
+  value,
+  keepMounted = false,
+  className,
+  children,
+}: React.HTMLAttributes<HTMLDivElement> & { value: string; keepMounted?: boolean }) {
   const context = React.useContext(TabsContext);
   if (!context) throw new Error('TabsContent must be used within Tabs');
-  if (context.value !== value) return null;
-  return <div className={cn('outline-none', className)}>{children}</div>;
+  const active = context.value === value;
+  if (!active && !keepMounted) return null;
+  return (
+    <div
+      className={cn('outline-none', className)}
+      hidden={!active}
+      inert={!active ? true : undefined}
+    >
+      {children}
+    </div>
+  );
 }
