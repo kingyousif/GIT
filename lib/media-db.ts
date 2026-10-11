@@ -319,10 +319,14 @@ export async function updateMediaItemAsync(
     } catch {}
   }
 
-  apiFetch('/api/media', {
+  const payload: Record<string, string> = {};
+  if (updates.label !== undefined) payload.label = updates.label;
+  if (updates.annotations !== undefined) payload.annotations = updates.annotations;
+
+  await apiFetch('/api/media', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, mediaId, updates: { label: updates.label, annotations: updates.annotations } }),
+    body: JSON.stringify({ sessionId, mediaId, updates: payload }),
   }).catch(() => {});
 }
 

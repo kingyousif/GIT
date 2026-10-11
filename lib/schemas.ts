@@ -14,7 +14,7 @@ export const patientRegistrationSchema = z.object({
   scheduledAt: z.string().min(1, 'Date and time are required.'),
   indication: z.string().min(3, 'Indication is required.'),
   preparation: z.string().min(3, 'Preparation instructions are required.'),
-  sedation: z.enum(['none', 'local', 'conscious', 'general']),
+  sedation: z.string().min(1, 'Sedation is required.').default('conscious'),
 });
 
 export const reportSectionSchema = z.object({
@@ -33,6 +33,9 @@ export const reportSchema = z.object({
   biopsy: z.boolean(),
   biopsyLocation: z.string().optional(),
   biopsySentTo: z.string().optional(),
+  freeReportHtml: z.string().optional(),
+  selectedImages: z.array(z.string()).optional(),
+  printMode: z.string().optional(),
   status: z.enum(['draft', 'final']),
 });
 
@@ -71,6 +74,7 @@ export const templateSchema = z.object({
     z.object({
       title: z.string().min(1, 'Section title is required.'),
       defaultContent: z.string().min(1, 'Default content is required.'),
+      titleColor: z.string().optional(),
     }),
   ),
   diagnoses: z.array(z.string()),

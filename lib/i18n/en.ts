@@ -217,6 +217,8 @@ const en = {
     descending: 'Descending',
     previewAnnotation: 'Media preview & annotation',
     label: 'Label',
+    labelPlaceholder: 'Name this image…',
+    clearLabel: 'Clear label',
     annotations: 'Annotations',
     filename: 'Filename',
     source: 'Source',

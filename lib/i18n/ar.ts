@@ -215,6 +215,8 @@ const ar: DeepString<typeof en> = {
     descending: 'تنازلي',
     previewAnnotation: 'معاينة وتعليق الوسائط',
     label: 'التسمية',
+    labelPlaceholder: 'سمّ هذه الصورة…',
+    clearLabel: 'مسح التسمية',
     annotations: 'التعليقات',
     filename: 'اسم الملف',
     source: 'المصدر',

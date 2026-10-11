@@ -223,6 +223,8 @@ const ckb: DeepString<typeof en> = {
     descending: "بەرەو خوارەوە",
     previewAnnotation: "پیشاندان و تێبینی میدیا",
     label: "ناونیشان",
+    labelPlaceholder: "ناوی ئەم وێنەیە بنووسە…",
+    clearLabel: "سڕینەوەی ناونیشان",
     annotations: "تێبینییەکان",
     filename: "ناوی فایل",
     source: "سەرچاوە",

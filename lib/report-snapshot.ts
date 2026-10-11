@@ -10,7 +10,7 @@ import {
   ProcedureSession,
   Report,
 } from "@/lib/types";
-import { formatDateTime, getProcedureLabel } from "@/lib/utils";
+import { formatDateTime, formatSedation, getProcedureLabel } from "@/lib/utils";
 import { formatDateOfBirth } from "@/lib/age";
 import { REPORT_HEADER_IMAGE } from "@/lib/header-image";
 
@@ -51,9 +51,9 @@ export function buildReportHtmlBody({
   const sectionsHtml = validSections
     .map(
       (s) => `
-      <div class="section">
-        <div class="section-title">${escapeHtml(s.title)}</div>
-        <div class="section-text">${s.content || ""}</div>
+      <div class="section" style="margin-top: 14px; margin-bottom: 8px;">
+        <div class="section-title" style="font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: ${s.titleColor || "#0f172a"}; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid ${s.titleColor || "#0f766e"}; display: inline-block;">${escapeHtml(s.title)}</div>
+        <div class="section-text" style="font-size: 11px; color: #1e293b; line-height: 1.55;">${s.content || ""}</div>
       </div>`,
     )
     .join("");
@@ -61,18 +61,18 @@ export function buildReportHtmlBody({
   const validDiagnoses =
     report.diagnosis?.filter((d) => d && d.trim().length > 0) ?? [];
   const diagnosisHtml = validDiagnoses.length
-    ? `<div class="section">
-        <div class="section-title">Diagnosis</div>
-        <ol class="section-list">${validDiagnoses.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ol>
+    ? `<div class="section" style="margin-top: 14px; margin-bottom: 8px;">
+        <div class="section-title" style="font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #0f172a; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #0f766e; display: inline-block;">Diagnosis</div>
+        <ol class="section-list" style="padding-left: 16px; font-size: 11px; color: #1e293b; line-height: 1.55;">${validDiagnoses.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ol>
       </div>`
     : "";
 
   const validRecs =
     report.recommendations?.filter((r) => r && r.trim().length > 0) ?? [];
   const recommendationsHtml = validRecs.length
-    ? `<div class="section">
-        <div class="section-title">Recommendations</div>
-        <ol class="section-list">${validRecs.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ol>
+    ? `<div class="section" style="margin-top: 14px; margin-bottom: 8px;">
+        <div class="section-title" style="font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #0f172a; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #0f766e; display: inline-block;">Recommendations</div>
+        <ol class="section-list" style="padding-left: 16px; font-size: 11px; color: #1e293b; line-height: 1.55;">${validRecs.map((r) => `<li style="margin-bottom: 4px;">${r}</li>`).join("")}</ol>
       </div>`
     : "";
 
@@ -105,9 +105,9 @@ export function buildReportHtmlBody({
         <div class="hospital-info">
           ${settings.hospitalLogo ? `<div class="hospital-logo"><img src="${settings.hospitalLogo}" alt="Logo" /></div>` : '<div class="hospital-logo">🏥</div>'}
           <div>
-            <div class="hospital-name">${escapeHtml(settings.hospitalName)}</div>
-            <div class="hospital-dept">${escapeHtml(settings.departmentName)}</div>
-            <div class="hospital-addr">${escapeHtml(settings.address)} · ${escapeHtml(settings.phone)}</div>
+            <div class="hospital-name" style="font-size: 17.5px; font-weight: 800; color: #0f172a;">${escapeHtml(settings.hospitalName)}</div>
+            <div class="hospital-dept" style="font-size: 12px; color: #475569;">${escapeHtml(settings.departmentName)}</div>
+            <div class="hospital-addr" style="font-size: 11px; color: #64748b;">${escapeHtml(settings.address)} · ${escapeHtml(settings.phone)}</div>
           </div>
         </div>
         <div style="text-align: right;">
@@ -115,13 +115,15 @@ export function buildReportHtmlBody({
         </div>
       </div>
 
-      <div class="patient-bar">
-        <div><div class="info-cell-label">Patient</div><div class="info-cell-value">${escapeHtml(patient.fullName)}</div></div>
-        <div><div class="info-cell-label">Code</div><div class="info-cell-value">${escapeHtml(patient.patientCode)}</div></div>
-        <div><div class="info-cell-label">Age / Gender</div><div class="info-cell-value">${patient.age} years / ${escapeHtml(patient.gender)}${formatDateOfBirth(patient.dateOfBirth) ? ` · ${escapeHtml(formatDateOfBirth(patient.dateOfBirth))}` : ""}</div></div>
-        <div><div class="info-cell-label">Date</div><div class="info-cell-value">${escapeHtml(formatDateTime(session.scheduledAt))}</div></div>
-        <div><div class="info-cell-label">Doctor</div><div class="info-cell-value">${escapeHtml(report.doctorName)}</div></div>
-        <div><div class="info-cell-label">Procedure</div><div class="info-cell-value">${escapeHtml(getProcedureLabel(session.procedureType))}</div></div>
+      <div class="patient-bar" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 12px; margin-top: 12px; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Patient</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(patient.fullName)}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Code</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(patient.patientCode)}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Age / Gender</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${patient.age} years / ${escapeHtml(patient.gender)}${formatDateOfBirth(patient.dateOfBirth) ? ` · ${escapeHtml(formatDateOfBirth(patient.dateOfBirth))}` : ""}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Date</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(formatDateTime(session.scheduledAt))}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Procedure</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(getProcedureLabel(session.procedureType))}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Doctor</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(report.doctorName || session.doctorName || "—")}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Anesthesia</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(formatSedation(session.sedation))}</div></div>
+        <div><div class="info-cell-label" style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px;">Referred Doctor</div><div class="info-cell-value" style="font-size: 12.5px; font-weight: 600; color: #0f172a;">${escapeHtml(patient.referredBy || "—")}</div></div>
       </div>
     </div>
 

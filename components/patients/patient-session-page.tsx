@@ -54,7 +54,7 @@ import {
   ensureJoinedSession,
 } from "@/lib/queries";
 import { getMediaForSessionAsync, deleteMediaItemAsync } from "@/lib/media-db";
-import { formatAge, formatDateTime, getProcedureLabel, toDatetimeLocalValue } from "@/lib/utils";
+import { formatAge, formatDateTime, formatSedation, getProcedureLabel, toDatetimeLocalValue } from "@/lib/utils";
 import { formatDateOfBirth } from "@/lib/age";
 import { BirthDateAgeFields } from "@/components/patients/birth-date-age-fields";
 import {
@@ -78,7 +78,7 @@ const editSchema = z.object({
   scheduledAt: z.string().min(1),
   indication: z.string().min(3),
   preparation: z.string().min(3),
-  sedation: z.enum(["none", "local", "conscious", "general"]),
+  sedation: z.string().default("conscious"),
   status: z.enum(["waiting", "in-progress", "completed", "cancelled"]),
 });
 
@@ -383,7 +383,7 @@ export function PatientSessionPage() {
                 />
                 <InfoBlock
                   label={t.patientSession.sedation}
-                  value={record.session.sedation}
+                  value={formatSedation(record.session.sedation)}
                 />
                 <InfoBlock
                   label={t.newPatient.indication}
@@ -703,7 +703,7 @@ export function PatientSessionPage() {
 
               {printReport && (
                 <PrintPreview
-                  key={record.session.id}
+                  key={`${record.session.id}_${printReport.id}`}
                   patient={record.patient}
                   session={record.session}
                   report={printReport}
@@ -841,25 +841,37 @@ export function PatientSessionPage() {
               />
             </Field>
             <Field label={t.patientSession.sedation}>
-              <Select
-                value={String(editValues.sedation ?? "none")}
-                onValueChange={(value) =>
-                  setEditValues((prev) => ({ ...prev, sedation: value }))
-                }
-              >
-                <SelectItem value="none">
-                  {t.newPatient.sedationNone}
-                </SelectItem>
-                <SelectItem value="local">
-                  {t.newPatient.sedationLocal}
-                </SelectItem>
-                <SelectItem value="conscious">
-                  {t.newPatient.sedationConscious}
-                </SelectItem>
-                <SelectItem value="general">
-                  {t.newPatient.sedationGeneral}
-                </SelectItem>
-              </Select>
+              <div className="space-y-1.5">
+                <Select
+                  value={
+                    ["none", "local", "conscious", "general", "Propofol", "Midazolam", "Midazolam + Fentanyl", "Propofol + Fentanyl"].includes(String(editValues.sedation ?? ""))
+                      ? String(editValues.sedation)
+                      : "custom"
+                  }
+                  onValueChange={(value) => {
+                    if (value !== "custom") {
+                      setEditValues((prev) => ({ ...prev, sedation: value }));
+                    }
+                  }}
+                >
+                  <SelectItem value="none">{t.newPatient.sedationNone}</SelectItem>
+                  <SelectItem value="conscious">{t.newPatient.sedationConscious}</SelectItem>
+                  <SelectItem value="local">{t.newPatient.sedationLocal}</SelectItem>
+                  <SelectItem value="general">{t.newPatient.sedationGeneral}</SelectItem>
+                  <SelectItem value="Propofol">Propofol</SelectItem>
+                  <SelectItem value="Midazolam">Midazolam</SelectItem>
+                  <SelectItem value="Midazolam + Fentanyl">Midazolam + Fentanyl</SelectItem>
+                  <SelectItem value="Propofol + Fentanyl">Propofol + Fentanyl</SelectItem>
+                  <SelectItem value="custom">Other / Custom Medication...</SelectItem>
+                </Select>
+                <Input
+                  placeholder="e.g. Propofol 100mg, Midazolam..."
+                  value={String(editValues.sedation ?? "")}
+                  onChange={(e) =>
+                    setEditValues((prev) => ({ ...prev, sedation: e.target.value }))
+                  }
+                />
+              </div>
             </Field>
             <Field label={t.common.status}>
               <Select
@@ -1003,11 +1015,7 @@ export function PatientSessionPage() {
                       indication:
                         newVisitValues.indication || "Follow-up visit",
                       preparation: newVisitValues.preparation || "",
-                      sedation: newVisitValues.sedation as
-                        | "none"
-                        | "local"
-                        | "conscious"
-                        | "general",
+                      sedation: newVisitValues.sedation || "conscious",
                     },
                   );
                   setNewVisitOpen(false);

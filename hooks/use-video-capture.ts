@@ -619,13 +619,16 @@ export function useVideoCapture(sessionId: string) {
 
   const updateMedia = useCallback(
     async (mediaId: string, updates: Partial<MediaFile>) => {
+      setCapturedMedia((prev) =>
+        prev.map((item) => (item.id === mediaId ? { ...item, ...updates } : item)),
+      );
       try {
         await updateMediaItemAsync(mediaId, { ...updates, sessionId }, mediaContext);
-        await syncMedia();
-        toast.success("Media updated.");
       } catch (error) {
         console.error(error);
+        await syncMedia();
         toast.error("Failed to update media item.");
+        throw error;
       }
     },
     [mediaContext, sessionId, syncMedia],

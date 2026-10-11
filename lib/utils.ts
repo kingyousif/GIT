@@ -38,6 +38,90 @@ export function getProcedureLabel(type: ProcedureType) {
   return PROCEDURE_LABELS[type] ?? type.replace(/-/g, ' ');
 }
 
+export function formatSedation(sedation?: string): string {
+  if (!sedation) return 'None';
+  const trimmed = sedation.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === 'none') return 'None';
+  if (lower === 'conscious') return 'Conscious Sedation';
+  if (lower === 'local') return 'Local Anesthesia';
+  if (lower === 'general') return 'General Anesthesia';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+export function formatRecommendationHtml(
+  text: string,
+  options: { bold?: boolean; color?: string; bgColor?: string; fontSize?: string }
+): string {
+  const cleanText = text.replace(/<[^>]*>/g, '').trim();
+  if (!cleanText) return '';
+  const bold = options.bold ?? false;
+  const color =
+    options.color &&
+    options.color !== '#0f172a' &&
+    options.color !== 'inherit' &&
+    options.color !== 'default'
+      ? options.color
+      : undefined;
+  const bgColor =
+    options.bgColor &&
+    options.bgColor !== 'transparent' &&
+    options.bgColor !== 'none' &&
+    options.bgColor !== ''
+      ? options.bgColor
+      : undefined;
+  const fontSize =
+    options.fontSize &&
+    options.fontSize !== '11.5px' &&
+    options.fontSize !== '11px' &&
+    options.fontSize !== 'inherit' &&
+    options.fontSize !== 'normal' &&
+    options.fontSize !== 'default'
+      ? options.fontSize
+      : undefined;
+
+  if (!bold && !color && !bgColor && !fontSize) {
+    return cleanText;
+  }
+
+  const styles: string[] = [];
+  if (fontSize) styles.push(`font-size: ${fontSize}`);
+  if (bold) styles.push('font-weight: 700');
+  if (color) styles.push(`color: ${color}`);
+  if (bgColor) {
+    styles.push(`background-color: ${bgColor}`);
+    styles.push('padding: 2px 6px');
+    styles.push('border-radius: 4px');
+  }
+
+  return `<span style="${styles.join('; ')}">${cleanText}</span>`;
+}
+
+export function parseRecommendation(item: string): {
+  text: string;
+  bold: boolean;
+  color: string;
+  bgColor: string;
+  fontSize: string;
+} {
+  if (!item.includes('<') && !item.includes('>')) {
+    return { text: item, bold: false, color: '#0f172a', bgColor: 'transparent', fontSize: '11.5px' };
+  }
+  const isBold =
+    /font-weight:\s*(bold|700|800|900)/i.test(item) || /<strong|<b\b/i.test(item);
+  const colorMatch = item.match(/color:\s*([^;"]+)/i);
+  const bgColorMatch = item.match(/background-color:\s*([^;"]+)/i);
+  const fontSizeMatch = item.match(/font-size:\s*([^;"]+)/i);
+  const cleanText = item.replace(/<[^>]*>/g, '').trim();
+  return {
+    text: cleanText,
+    bold: isBold,
+    color: colorMatch ? colorMatch[1].trim() : '#0f172a',
+    bgColor: bgColorMatch ? bgColorMatch[1].trim() : 'transparent',
+    fontSize: fontSizeMatch ? fontSizeMatch[1].trim() : '11.5px',
+  };
+}
+
 export function formatAge(age: number, yearsLabel: string) {
   return `${age} ${yearsLabel}`;
 }
@@ -118,7 +202,10 @@ export function createTextReportCopy(input: {
   const validRecs = input.recommendations.filter((item) => item && item.trim().length > 0);
   if (validRecs.length) {
     lines.push('RECOMMENDATIONS:');
-    validRecs.forEach((item, index) => lines.push(`${index + 1}. ${item}`));
+    validRecs.forEach((item, index) => {
+      const plain = item.replace(/<[^>]*>/g, '').trim();
+      if (plain) lines.push(`${index + 1}. ${plain}`);
+    });
     lines.push('');
   }
 

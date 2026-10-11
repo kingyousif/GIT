@@ -47,14 +47,26 @@ import {
   ProcedureType,
   ReportTemplate,
 } from "@/lib/types";
-import { downloadJson, fileToDataUrl, safeJsonParse } from "@/lib/utils";
+import { cn, downloadJson, fileToDataUrl, safeJsonParse } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
+
+const SECTION_TITLE_COLORS = [
+  { name: "Navy / Default", value: "#0f172a" },
+  { name: "Red", value: "#dc2626" },
+  { name: "Teal", value: "#0f766e" },
+  { name: "Blue", value: "#2563eb" },
+  { name: "Orange", value: "#ea580c" },
+  { name: "Amber", value: "#d97706" },
+  { name: "Green", value: "#16a34a" },
+  { name: "Purple", value: "#7c3aed" },
+  { name: "Rose", value: "#e11d48" },
+];
 
 interface TemplateDraft {
   id: string;
   name: string;
   procedureType: ProcedureType;
-  sections: { title: string; defaultContent: string }[];
+  sections: { title: string; defaultContent: string; titleColor?: string }[];
   diagnosesText: string;
 }
 
@@ -114,8 +126,8 @@ export function SettingsPageContent() {
       name: "",
       procedureType: settings?.procedures[0]?.id ?? "upper-endoscopy",
       sections: [
-        { title: "Indication", defaultContent: "" },
-        { title: "Findings", defaultContent: "" },
+        { title: "Indication", defaultContent: "", titleColor: "#0f172a" },
+        { title: "Findings", defaultContent: "", titleColor: "#0f172a" },
       ],
       diagnosesText: "",
     });
@@ -127,7 +139,11 @@ export function SettingsPageContent() {
       id: template.id,
       name: template.name,
       procedureType: template.procedureType,
-      sections: template.sections,
+      sections: template.sections.map((s) => ({
+        title: s.title,
+        defaultContent: s.defaultContent,
+        titleColor: s.titleColor || "#0f172a",
+      })),
       diagnosesText: template.diagnoses.join(", "),
     });
     setTemplateDialogOpen(true);
@@ -629,7 +645,7 @@ export function SettingsPageContent() {
                                 ...prev,
                                 sections: [
                                   ...prev.sections,
-                                  { title: "New Section", defaultContent: "" },
+                                  { title: "New Section", defaultContent: "", titleColor: "#0f172a" },
                                 ],
                               }
                             : prev,
@@ -640,15 +656,146 @@ export function SettingsPageContent() {
                     </Button>
                   </div>
                   <div className="space-y-3">
-                    {templateDraft.sections.map((section, index) => (
-                      <div
-                        key={index}
-                        className="grid gap-3 rounded-2xl border border-card-border p-4"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={section.title}
-                            onChange={(e) =>
+                    {templateDraft.sections.map((section, index) => {
+                      const currentTitleColor =
+                        section.titleColor || "#0f172a";
+                      return (
+                        <div
+                          key={index}
+                          className="grid gap-3 rounded-2xl border border-card-border p-4 transition-all"
+                          style={{
+                            borderLeftWidth: "4px",
+                            borderLeftColor: currentTitleColor,
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-card-border/60 pb-3">
+                            <div className="flex flex-1 items-center gap-2 min-w-[200px]">
+                              <span
+                                className="h-3.5 w-3.5 rounded-full shrink-0 shadow-2xs transition-colors"
+                                style={{ backgroundColor: currentTitleColor }}
+                              />
+                              <Input
+                                value={section.title}
+                                onChange={(e) =>
+                                  setTemplateDraft((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          sections: prev.sections.map(
+                                            (item, itemIndex) =>
+                                              itemIndex === index
+                                                ? {
+                                                    ...item,
+                                                    title: e.target.value,
+                                                  }
+                                                : item,
+                                          ),
+                                        }
+                                      : prev,
+                                  )
+                                }
+                                placeholder={t.settings.sectionTitle}
+                                className="font-bold text-sm tracking-wide"
+                                style={{ color: currentTitleColor }}
+                              />
+                            </div>
+
+                            {/* Title Color Palette Swatches */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Title Color:
+                              </span>
+                              <div className="flex items-center gap-1 rounded-lg border border-card-border/70 bg-background/80 p-1 shadow-2xs">
+                                {SECTION_TITLE_COLORS.map((c) => {
+                                  const active =
+                                    currentTitleColor.toLowerCase() ===
+                                    c.value.toLowerCase();
+                                  return (
+                                    <button
+                                      key={c.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setTemplateDraft((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                sections: prev.sections.map(
+                                                  (item, itemIndex) =>
+                                                    itemIndex === index
+                                                      ? {
+                                                          ...item,
+                                                          titleColor: c.value,
+                                                        }
+                                                      : item,
+                                                ),
+                                              }
+                                            : prev,
+                                        )
+                                      }
+                                      className={cn(
+                                        "h-5 w-5 rounded-full transition-transform hover:scale-115 active:scale-95 shadow-2xs cursor-pointer",
+                                        active &&
+                                          "ring-2 ring-primary ring-offset-1 scale-110",
+                                      )}
+                                      style={{ backgroundColor: c.value }}
+                                      title={c.name}
+                                    />
+                                  );
+                                })}
+                                <label
+                                  className="relative flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-card-border bg-gradient-to-tr from-rose-500 via-amber-400 to-indigo-500 hover:scale-115 transition-transform shadow-2xs"
+                                  title="Custom Color..."
+                                >
+                                  <input
+                                    type="color"
+                                    value={currentTitleColor}
+                                    onChange={(e) =>
+                                      setTemplateDraft((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              sections: prev.sections.map(
+                                                (item, itemIndex) =>
+                                                  itemIndex === index
+                                                    ? {
+                                                        ...item,
+                                                        titleColor:
+                                                          e.target.value,
+                                                      }
+                                                    : item,
+                                              ),
+                                            }
+                                          : prev,
+                                      )
+                                    }
+                                    className="sr-only"
+                                  />
+                                </label>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() =>
+                                  setTemplateDraft((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          sections: prev.sections.filter(
+                                            (_, itemIndex) =>
+                                              itemIndex !== index,
+                                          ),
+                                        }
+                                      : prev,
+                                  )
+                                }
+                              >
+                                <Trash2 className="h-4 w-4 text-rose-600" />
+                              </Button>
+                            </div>
+                          </div>
+                          <RichTextEditor
+                            value={section.defaultContent}
+                            onChange={(html) =>
                               setTemplateDraft((prev) =>
                                 prev
                                   ? {
@@ -656,56 +803,19 @@ export function SettingsPageContent() {
                                       sections: prev.sections.map(
                                         (item, itemIndex) =>
                                           itemIndex === index
-                                            ? { ...item, title: e.target.value }
+                                            ? { ...item, defaultContent: html }
                                             : item,
                                       ),
                                     }
                                   : prev,
                               )
                             }
-                            placeholder={t.settings.sectionTitle}
+                            placeholder={t.settings.defaultContent}
+                            minHeight="100px"
                           />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              setTemplateDraft((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      sections: prev.sections.filter(
-                                        (_, itemIndex) => itemIndex !== index,
-                                      ),
-                                    }
-                                  : prev,
-                              )
-                            }
-                          >
-                            <Trash2 className="h-4 w-4 text-rose-600" />
-                          </Button>
                         </div>
-                        <RichTextEditor
-                          value={section.defaultContent}
-                          onChange={(html) =>
-                            setTemplateDraft((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    sections: prev.sections.map(
-                                      (item, itemIndex) =>
-                                        itemIndex === index
-                                          ? { ...item, defaultContent: html }
-                                          : item,
-                                    ),
-                                  }
-                                : prev,
-                            )
-                          }
-                          placeholder={t.settings.defaultContent}
-                          minHeight="100px"
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
                 <Field

@@ -63,6 +63,8 @@ export function FreeReportEditor({ patient, session, report, settings, onAfterSa
         biopsySentTo: report?.biopsySentTo,
         status,
         freeReportHtml: content,
+        selectedImages: currentReport?.selectedImages || report?.selectedImages,
+        printMode: currentReport?.printMode || report?.printMode,
       });
 
       persistedReportRef.current = saved;

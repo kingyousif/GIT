@@ -26,6 +26,7 @@ import {
   Trash2,
   Upload,
   Video,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useVideoCapture } from "@/hooks/use-video-capture";
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CropSettingsDialog } from "@/components/patients/crop-settings-dialog";
+import { MediaLabelEditor } from "@/components/patients/media-label-editor";
 import { MediaFile } from "@/lib/types";
 import { cn, formatDateTime } from "@/lib/utils";
 import { convertWebmToMp4 } from "@/lib/convert-video";
@@ -833,9 +835,21 @@ export function MediaCapturePanel({
 
                       {/* Card Content & Action Buttons */}
                       <div className="p-2 space-y-1">
-                        <p className="truncate text-xs font-medium text-foreground" title={item.label || item.filename}>
-                          {item.label || item.filename}
-                        </p>
+                        {item.type === "report" ? (
+                          <p className="truncate text-xs font-medium text-foreground" title={item.label || item.filename}>
+                            {item.label || item.filename}
+                          </p>
+                        ) : (
+                          <MediaLabelEditor
+                            compact
+                            label={item.label}
+                            filename={item.filename}
+                            onSave={async (nextLabel) => {
+                              await updateMedia(item.id, { label: nextLabel });
+                              onMediaChanged?.();
+                            }}
+                          />
+                        )}
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                           <span>{formatDateTime(item.capturedAt)}</span>
                           {item.size ? <span>{formatBytes(item.size)}</span> : null}
@@ -1281,9 +1295,20 @@ export function MediaCapturePanel({
                         <div className="space-y-2 p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="truncate font-medium text-foreground text-sm" title={item.label || item.filename}>
-                                {item.label || item.filename}
-                              </p>
+                              {item.type === "report" ? (
+                                <p className="truncate font-medium text-foreground text-sm" title={item.label || item.filename}>
+                                  {item.label || item.filename}
+                                </p>
+                              ) : (
+                                <MediaLabelEditor
+                                  label={item.label}
+                                  filename={item.filename}
+                                  onSave={async (nextLabel) => {
+                                    await updateMedia(item.id, { label: nextLabel });
+                                    onMediaChanged?.();
+                                  }}
+                                />
+                              )}
                               <div className="flex items-center justify-between text-xs text-muted-foreground mt-0.5">
                                 <span>{formatDateTime(item.capturedAt)}</span>
                                 {item.size ? <span>{formatBytes(item.size)}</span> : null}
@@ -1370,10 +1395,25 @@ export function MediaCapturePanel({
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>{t.media.label}</Label>
-                    <Input
-                      value={draftLabel}
-                      onChange={(event) => setDraftLabel(event.target.value)}
-                    />
+                    <div className="relative">
+                      <Input
+                        value={draftLabel}
+                        placeholder={t.media.labelPlaceholder}
+                        onChange={(event) => setDraftLabel(event.target.value)}
+                        className="pe-9"
+                      />
+                      {draftLabel ? (
+                        <button
+                          type="button"
+                          className="absolute end-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          title={t.media.clearLabel}
+                          aria-label={t.media.clearLabel}
+                          onClick={() => setDraftLabel("")}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label>{t.media.annotations}</Label>
@@ -1452,17 +1492,20 @@ export function MediaCapturePanel({
                   {isConverting ? t.media.converting : t.common.download}
                 </Button>
                 <Button
-                  onClick={() => {
-                    updateMedia(previewMedia.id, {
-                      label: draftLabel,
+                  onClick={async () => {
+                    const nextLabel = draftLabel.trim();
+                    await updateMedia(previewMedia.id, {
+                      label: nextLabel,
                       annotations: draftAnnotations,
                     });
                     toast.success("Annotation saved.");
+                    onMediaChanged?.();
                     setPreviewMedia({
                       ...previewMedia,
-                      label: draftLabel,
+                      label: nextLabel,
                       annotations: draftAnnotations,
                     });
+                    setDraftLabel(nextLabel);
                   }}
                 >
                   {t.media.saveChanges}

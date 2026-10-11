@@ -13,8 +13,9 @@ import {
   ProcedureSession,
   Report,
 } from "@/lib/types";
-import { formatDateTime, getProcedureLabel } from "@/lib/utils";
+import { formatDateTime, formatSedation, getProcedureLabel } from "@/lib/utils";
 import { formatDateOfBirth } from "@/lib/age";
+import { displayMediaLabel, getPrintableMediaLabel } from "@/lib/media-label";
 import {
   getModeLimit,
   hasStoredPrintPicks,
@@ -33,6 +34,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { saveReport } from "@/lib/queries";
 
 function byCapturedAt(a: MediaFile, b: MediaFile) {
   const aTime = new Date(a.capturedAt).getTime();
@@ -72,20 +74,46 @@ export function PrintPreview({
         .sort(byCapturedAt),
     [media],
   );
-  const [printMode, setPrintMode] = useState<PrintMode>(
-    () => loadPrintVisit(session.id).mode,
-  );
+  const reportContextId = report?.id ? `rep_${report.id}` : session.id;
+  const sessionContextId = session.id;
+
+  const [printMode, setPrintMode] = useState<PrintMode>(() => {
+    if (
+      report?.printMode &&
+      (report.printMode === "report-5" ||
+        report.printMode === "report-6" ||
+        report.printMode === "images-only" ||
+        report.printMode === "images-15")
+    ) {
+      return report.printMode as PrintMode;
+    }
+    return loadPrintVisit(
+      reportContextId,
+      imageMedia,
+      report?.selectedImages,
+      report?.printMode,
+    ).mode;
+  });
 
   const maxImages = getModeLimit(printMode);
 
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    const visit = loadPrintVisit(session.id, imageMedia);
-    return restorePrintSelection(session.id, visit.mode, imageMedia, getModeLimit(visit.mode));
+    return restorePrintSelection(
+      reportContextId,
+      printMode,
+      imageMedia,
+      maxImages,
+      report?.selectedImages,
+      sessionContextId,
+    );
   });
 
   const [imagesCollapsed, setImagesCollapsed] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
-  const selectionRemembered = hasStoredPrintPicks(session.id, printMode) && selectedIds.length > 0;
+  const selectionRemembered =
+    (hasStoredPrintPicks(reportContextId, printMode) ||
+      Boolean(report?.selectedImages && report.selectedImages.length > 0)) &&
+    selectedIds.length > 0;
 
   useEffect(() => {
     if (imageMedia.length === 0) return;
@@ -101,9 +129,23 @@ export function PrintPreview({
           stillValid.every((id, index) => id === current[index]);
         return unchanged ? current : stillValid;
       }
-      return restorePrintSelection(session.id, printMode, imageMedia, maxImages);
+      return restorePrintSelection(
+        reportContextId,
+        printMode,
+        imageMedia,
+        maxImages,
+        report?.selectedImages,
+        sessionContextId,
+      );
     });
-  }, [session.id, printMode, imageMedia, maxImages]);
+  }, [
+    reportContextId,
+    sessionContextId,
+    printMode,
+    imageMedia,
+    maxImages,
+    report?.selectedImages,
+  ]);
 
   const selectedImages = selectedIds
     .map((id) => imageMedia.find((item) => item.id === id))
@@ -145,7 +187,22 @@ export function PrintPreview({
       } else {
         next = [...prev, id];
       }
-      rememberPrintSelection(session.id, printMode, next, imageMedia);
+      rememberPrintSelection(
+        reportContextId,
+        printMode,
+        next,
+        imageMedia,
+        sessionContextId,
+      );
+      if (report?.id) {
+        saveReport({
+          ...report,
+          selectedImages: next,
+          printMode,
+        }).catch((err) =>
+          console.error("Auto-save selected images failed:", err),
+        );
+      }
       return next;
     });
   };
@@ -153,24 +210,85 @@ export function PrintPreview({
   const handleSelectFirst = () => {
     const topImages = imageMedia.slice(0, maxImages).map((m) => m.id);
     setSelectedIds(topImages);
-    rememberPrintSelection(session.id, printMode, topImages, imageMedia);
+    rememberPrintSelection(
+      reportContextId,
+      printMode,
+      topImages,
+      imageMedia,
+      sessionContextId,
+    );
+    if (report?.id) {
+      saveReport({
+        ...report,
+        selectedImages: topImages,
+        printMode,
+      }).catch((err) =>
+        console.error("Auto-save selected images failed:", err),
+      );
+    }
     toast.success(`Selected first ${topImages.length} image(s).`);
   };
 
   const handleClearAll = () => {
     setSelectedIds([]);
-    rememberPrintSelection(session.id, printMode, [], imageMedia);
+    rememberPrintSelection(
+      reportContextId,
+      printMode,
+      [],
+      imageMedia,
+      sessionContextId,
+    );
+    if (report?.id) {
+      saveReport({
+        ...report,
+        selectedImages: [],
+        printMode,
+      }).catch((err) =>
+        console.error("Auto-save selected images failed:", err),
+      );
+    }
   };
 
   const handleModeChange = (newMode: PrintMode) => {
-    rememberPrintSelection(session.id, printMode, selectedIds, imageMedia);
+    rememberPrintSelection(
+      reportContextId,
+      printMode,
+      selectedIds,
+      imageMedia,
+      sessionContextId,
+    );
     setPrintMode(newMode);
     const limit = getModeLimit(newMode);
-    setSelectedIds(restorePrintSelection(session.id, newMode, imageMedia, limit));
+    const nextIds = restorePrintSelection(
+      reportContextId,
+      newMode,
+      imageMedia,
+      limit,
+      report?.selectedImages,
+      sessionContextId,
+    );
+    setSelectedIds(nextIds);
+    if (report?.id) {
+      saveReport({
+        ...report,
+        selectedImages: nextIds,
+        printMode: newMode,
+      }).catch((err) =>
+        console.error("Auto-save mode change failed:", err),
+      );
+    }
   };
 
   const handlePrint = () => {
     if (!printRef.current) return;
+
+    if (report?.id) {
+      saveReport({
+        ...report,
+        selectedImages: selectedIds,
+        printMode,
+      }).catch((err) => console.error("Failed to save report on print:", err));
+    }
 
     const printContent = printRef.current.innerHTML;
 
@@ -182,7 +300,7 @@ export function PrintPreview({
   <base href="${typeof window !== "undefined" ? window.location.origin : ""}/" />
   <title>Endoscopy Report - ${patient.fullName}</title>
   <style>
-    @page { size: A4; margin: ${isImagesOnlyMode ? "5mm" : "8mm"}; }
+    @page { size: A4; margin: ${isImagesOnlyMode ? "4mm" : "8mm"}; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
@@ -190,80 +308,15 @@ export function PrintPreview({
       line-height: 1.5;
       color: #0f172a;
       background: white;
-      padding: ${isImagesOnlyMode ? "5mm 8mm" : "10mm 14mm"};
-    }
-
-    /* Floating control bar (screen only) */
-    .print-control-bar {
-      position: sticky;
-      top: 0;
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      background: #0f172a;
-      color: white;
-      padding: 10px 18px;
-      margin: ${isImagesOnlyMode ? "-5mm -8mm 12px -8mm" : "-10mm -14mm 16px -14mm"};
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    .control-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-    }
-    .pulse-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      display: inline-block;
-      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
-    }
-    .control-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .btn-print {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #0f766e;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 16px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-print:hover {
-      background: #0d9488;
-    }
-    .btn-close {
-      background: rgba(255,255,255,0.15);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 14px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-close:hover {
-      background: rgba(255,255,255,0.25);
+      padding: ${isImagesOnlyMode ? "3mm 6mm" : "10mm 14mm"};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     .print-header {
-      padding-bottom: ${isImagesOnlyMode ? "8px" : "12px"};
-      border-bottom: 2.5px solid #0f766e;
-      margin-bottom: ${isImagesOnlyMode ? "8px" : "14px"};
+      padding-bottom: ${isImagesOnlyMode ? "4px" : "12px"};
+      border-bottom: ${isImagesOnlyMode ? "2px solid #0f766e" : "2.5px solid #0f766e"};
+      margin-bottom: ${isImagesOnlyMode ? "4px" : "14px"};
     }
     .header-row {
       display: flex;
@@ -273,37 +326,37 @@ export function PrintPreview({
     }
     .hospital-info { display: flex; align-items: center; gap: 12px; }
     .hospital-logo {
-      width: ${isImagesOnlyMode ? "40px" : "52px"}; height: ${isImagesOnlyMode ? "40px" : "52px"};
+      width: ${isImagesOnlyMode ? "36px" : "52px"}; height: ${isImagesOnlyMode ? "36px" : "52px"};
       border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       background: #f0fdfa;
       font-size: 24px;
     }
     .hospital-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
-    .hospital-name { font-size: ${isImagesOnlyMode ? "14px" : "16px"}; font-weight: 700; color: #0f172a; }
-    .hospital-dept { font-size: 11px; color: #475569; }
-    .hospital-addr { font-size: 10px; color: #64748b; }
+    .hospital-name { font-size: ${isImagesOnlyMode ? "15px" : "17.5px"}; font-weight: 800; color: #0f172a; }
+    .hospital-dept { font-size: 12px; color: #475569; }
+    .hospital-addr { font-size: 10.5px; color: #64748b; }
     .report-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0f172a; text-align: right; }
     .report-status { font-size: 10px; color: #64748b; text-align: right; }
     .patient-bar {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px 12px;
       margin-top: 12px;
-      padding: 10px 12px;
-      border: 1px solid #e2e8f0;
+      padding: 10px 14px;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
       background: #f8fafc;
     }
-    .info-cell-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
-    .info-cell-value { font-size: 11px; font-weight: 500; color: #0f172a; }
+    .info-cell-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px; }
+    .info-cell-value { font-size: 12.5px; font-weight: 600; color: #0f172a; }
     .body-with-images {
       display: grid;
       grid-template-columns: 1fr 50mm;
       gap: 12px;
       margin-top: 4px;
     }
-    .body-images-only { margin-top: 4px; }
+    .body-images-only { margin-top: 2px; }
     .section { margin-top: 14px; margin-bottom: 8px; }
     .section:first-child { margin-top: 4px; }
     .section-title {
@@ -372,25 +425,26 @@ export function PrintPreview({
     .images-grid figcaption { background: #f8fafc; padding: 3px 4px; text-align: center; font-size: 8px; font-weight: 500; color: #475569; }
     .images-grid-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #0f766e; margin-bottom: 6px; }
 
-    /* 12 Images single-page A4 print grid: 3 images per row */
+    /* 12 Images single-page A4 print grid: 3 images per row, 4 rows */
     .images-grid-12 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 5px;
-      margin-top: 4px;
+      gap: 3.5mm;
+      margin-top: 3mm;
       page-break-inside: avoid;
     }
     .images-grid-12 figure {
       overflow: hidden;
-      border-radius: 4px;
-      border: 1px solid #cbd5e1;
-      background: #f8fafc;
+      border-radius: 5px;
+      border: 1px solid #94a3b8;
+      background: #0f172a;
       page-break-inside: avoid;
       break-inside: avoid;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     }
     .images-grid-12 img {
       width: 100%;
-      height: 48mm;
+      height: 58mm;
       object-fit: cover;
       display: block;
     }
@@ -399,32 +453,36 @@ export function PrintPreview({
       padding: 2px 4px;
       text-align: center;
       font-size: 8px;
-      font-weight: 600;
-      color: #334155;
+      font-weight: 700;
+      color: #0f172a;
+      border-top: 1px solid #cbd5e1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      height: 3.5mm;
+      line-height: 3.5mm;
     }
 
     /* 15 Images single-page A4 print grid: 3 images per row, 5 rows */
     .images-grid-15 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 4px;
-      margin-top: 2px;
+      gap: 2.5mm;
+      margin-top: 2mm;
       page-break-inside: avoid;
     }
     .images-grid-15 figure {
       overflow: hidden;
       border-radius: 4px;
-      border: 1px solid #cbd5e1;
-      background: #f8fafc;
+      border: 1px solid #94a3b8;
+      background: #0f172a;
       page-break-inside: avoid;
       break-inside: avoid;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     }
     .images-grid-15 img {
       width: 100%;
-      height: 37.5mm;
+      height: 46mm;
       object-fit: cover;
       display: block;
     }
@@ -433,11 +491,14 @@ export function PrintPreview({
       padding: 1.5px 3px;
       text-align: center;
       font-size: 7.5px;
-      font-weight: 600;
-      color: #334155;
+      font-weight: 700;
+      color: #0f172a;
+      border-top: 1px solid #cbd5e1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      height: 3mm;
+      line-height: 3mm;
     }
 
     .print-footer { 
@@ -479,11 +540,14 @@ export function PrintPreview({
     }
 
     @media print {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
       .no-print {
         display: none !important;
       }
       body {
-        padding: ${isImagesOnlyMode ? "5mm 8mm" : "10mm 14mm"} !important;
+        padding: ${isImagesOnlyMode ? "3mm 6mm" : "10mm 14mm"} !important;
       }
       html, body {
         ${isImagesOnlyMode || selectedImages.length >= 6 ? "height: 100%; overflow: hidden; page-break-inside: avoid;" : ""}
@@ -496,16 +560,6 @@ export function PrintPreview({
   </style>
 </head>
 <body>
-  <div class="print-control-bar no-print">
-    <div class="control-brand">
-      <span class="pulse-dot"></span>
-      <strong>Endoscopy Report</strong> · <span>${patient.fullName} (${getProcedureLabel(session.procedureType)})</span>
-    </div>
-    <div class="control-actions">
-      <button onclick="window.print()" class="btn-print">🖨️ Print Report</button>
-      <button onclick="window.close()" class="btn-close">✕ Close Tab</button>
-    </div>
-  </div>
   ${printContent}
   <script>
     window.addEventListener('load', function() {
@@ -805,9 +859,9 @@ export function PrintPreview({
                             loading="lazy"
                           />
                         </div>
-                        <div className="p-2 flex items-center justify-between">
+                        <div className="p-2 flex items-center justify-between gap-2">
                           <p className="truncate text-xs font-medium text-foreground">
-                            {item.label || item.filename}
+                            {getPrintableMediaLabel(item) || displayMediaLabel(item)}
                           </p>
                           {checked && (
                             <span className="text-[10px] text-primary font-bold">
@@ -833,9 +887,20 @@ export function PrintPreview({
       </Card>
 
       {/* A4 Preview (visible on screen, also used as print source) */}
-      <div className="print-page mx-auto" ref={printRef}>
+      <div
+        className={`print-page mx-auto ${isImagesOnlyMode ? "print-page-images-only" : ""}`}
+        ref={printRef}
+        style={isImagesOnlyMode ? { padding: "4mm 6mm" } : undefined}
+      >
         {/* Page Header */}
-        <div className="print-header">
+        <div
+          className="print-header"
+          style={{
+            paddingBottom: isImagesOnlyMode ? "4px" : "12px",
+            borderBottom: isImagesOnlyMode ? "2px solid #0f766e" : "2.5px solid #0f766e",
+            marginBottom: isImagesOnlyMode ? "4px" : "14px",
+          }}
+        >
           <div
             className="header-row"
             style={{
@@ -850,12 +915,19 @@ export function PrintPreview({
               style={{ display: "flex", alignItems: "center", gap: "12px" }}
             >
               {settings.hospitalLogo ? (
-                <div className="hospital-logo">
+                <div
+                  className="hospital-logo"
+                  style={
+                    isImagesOnlyMode
+                      ? { width: "36px", height: "36px" }
+                      : undefined
+                  }
+                >
                   <img
                     src={settings.hospitalLogo}
                     alt="Logo"
-                    width={"70px"}
-                    height={"70px"}
+                    width={isImagesOnlyMode ? "36px" : "70px"}
+                    height={isImagesOnlyMode ? "36px" : "70px"}
                   />
                 </div>
               ) : (
@@ -864,19 +936,22 @@ export function PrintPreview({
               <div>
                 <div
                   className="hospital-name"
-                  style={{ fontSize: "16px", fontWeight: 700 }}
+                  style={{
+                    fontSize: isImagesOnlyMode ? "15px" : "17.5px",
+                    fontWeight: 800,
+                  }}
                 >
                   {settings.hospitalName}
                 </div>
                 <div
                   className="hospital-dept"
-                  style={{ fontSize: "11px", color: "#475569" }}
+                  style={{ fontSize: "12px", color: "#475569" }}
                 >
                   {settings.departmentName}
                 </div>
                 <div
                   className="hospital-addr"
-                  style={{ fontSize: "10px", color: "#64748b" }}
+                  style={{ fontSize: "10.5px", color: "#64748b" }}
                 >
                   {settings.address} · {settings.phone}
                 </div>
@@ -887,41 +962,30 @@ export function PrintPreview({
                 <img
                   src={REPORT_HEADER_IMAGE}
                   alt={t.printPreview.endoscopyReport}
-                  style={{ height: "40px", objectFit: "contain", display: "inline-block" }}
+                  style={{
+                    height: isImagesOnlyMode ? "30px" : "40px",
+                    objectFit: "contain",
+                    display: "inline-block",
+                  }}
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).src = "/image/image.png";
                   }}
                 />
               </div>
-              {/* <div className="report-status">
-                {report.status === "final" ? (
-                  <img
-                    src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxNDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMzgiIGhlaWdodD0iMjYiIHJ4PSIxMyIgZmlsbD0iI2VjZmRmNSIgc3Ryb2tlPSIjMTBiOTgxIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xOCAxNCBMMjMgMTkgTDMwIDExIiBmaWxsPSJub25lIiBzdHJva2U9IiMwNTk2NjkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48dGV4dCB4PSIzOCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDU5NjY5Ij5GaW5hbCBSZXBvcnQ8L3RleHQ+PC9zdmc+"
-                    alt={t.printPreview.finalReport}
-                    style={{ height: "24px" }}
-                  />
-                ) : (
-                  <img
-                    src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAxMDAgMjgiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSI5OCIgaGVpZ2h0PSIyNiIgcng9IjEzIiBmaWxsPSIjZmVmM2M3IiBzdHJva2U9IiNmNTljMTEiIHN0cm9rZS13aWR0aD0iMS41Ii8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxNCIgcj0iNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZDk3NzA2IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxwYXRoIGQ9Ik0xNSAxMSBBNSA1IDAgMSAxIDE1IDE3IiBmaWxsPSJub25lIiBzdHJva2U9IiNkOTc3MDYiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1kYXNoYXJyYXk9IjIgMiIvPjx0ZXh0IHg9IjI4IiB5PSIxOCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiNkOTc3MDYiPkRyYWZ0PC90ZXh0Pjwvc3ZnPg=="
-                    alt={t.printPreview.draftReport}
-                    style={{ height: "24px" }}
-                  />
-                )}
-              </div> */}
             </div>
           </div>
 
-          {/* Patient Info Bar — removed on images-only selection */}
+          {/* Patient Info Bar — for reports with text */}
           {!isImagesOnlyMode && (
             <div
               className="patient-bar"
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "8px",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: "8px 12px",
                 marginTop: "12px",
-                padding: "10px 12px",
-                border: "1px solid #e2e8f0",
+                padding: "10px 14px",
+                border: "1px solid #cbd5e1",
                 borderRadius: "8px",
                 background: "#f8fafc",
               }}
@@ -936,11 +1000,69 @@ export function PrintPreview({
                 label="Date"
                 value={formatDateTime(session.scheduledAt)}
               />
-              <InfoCell label="Doctor" value={report.doctorName} />
               <InfoCell
                 label="Procedure"
                 value={getProcedureLabel(session.procedureType)}
               />
+              <InfoCell
+                label="Doctor"
+                value={report?.doctorName || session.doctorName || "—"}
+              />
+              <InfoCell
+                label="Anesthesia"
+                value={formatSedation(session.sedation)}
+              />
+              <InfoCell
+                label="Referred Doctor"
+                value={patient.referredBy || "—"}
+              />
+            </div>
+          )}
+
+          {/* Compact Patient & Doctor Strip for 12/15 Images Mode */}
+          {isImagesOnlyMode && (
+            <div
+              className="images-mode-patient-strip"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginTop: "4px",
+                padding: "4px 10px",
+                borderRadius: "4px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: "10px",
+                color: "#475569",
+              }}
+            >
+              <div>
+                <strong style={{ color: "#0f172a" }}>Patient:</strong>{" "}
+                {patient.fullName}{" "}
+                <span style={{ color: "#94a3b8" }}>({patient.patientCode})</span>
+              </div>
+              <div>
+                <strong style={{ color: "#0f172a" }}>Procedure:</strong>{" "}
+                {getProcedureLabel(session.procedureType)}
+              </div>
+              <div>
+                <strong style={{ color: "#0f172a" }}>Doctor:</strong>{" "}
+                {report?.doctorName || session.doctorName || "—"}
+              </div>
+              <div>
+                <strong style={{ color: "#0f172a" }}>Anesthesia:</strong>{" "}
+                {formatSedation(session.sedation)}
+              </div>
+              <div>
+                <strong style={{ color: "#0f172a" }}>Referred:</strong>{" "}
+                {patient.referredBy || "—"}
+              </div>
+              <div>
+                <strong style={{ color: "#0f172a" }}>Date:</strong>{" "}
+                {formatDateTime(session.scheduledAt)}
+              </div>
             </div>
           )}
         </div>
@@ -1075,8 +1197,12 @@ export function PrintPreview({
                           lineHeight: 1.55,
                         }}
                       >
-                        {validRecs.map((item) => (
-                          <li key={item}>{item}</li>
+                        {validRecs.map((item, idx) => (
+                          <li
+                            key={idx}
+                            style={{ marginBottom: "4px" }}
+                            dangerouslySetInnerHTML={{ __html: item }}
+                          />
                         ))}
                       </ol>
                     </div>
@@ -1180,14 +1306,15 @@ export function PrintPreview({
                   >
                     <img
                       src={item.dataUrl}
-                      alt={item.label || item.filename}
+                      alt={getPrintableMediaLabel(item) || item.filename}
                       style={{
                         width: "100%",
-                        height: "31mm",
+                        height: getPrintableMediaLabel(item) ? "31mm" : "34mm",
                         objectFit: "cover",
                         display: "block",
                       }}
                     />
+                    {getPrintableMediaLabel(item) ? (
                     <figcaption
                       style={{
                         background: "#f8fafc",
@@ -1201,8 +1328,9 @@ export function PrintPreview({
                         textOverflow: "ellipsis",
                       }}
                     >
-                      {item.label || item.filename}
+                      {getPrintableMediaLabel(item)}
                     </figcaption>
+                    ) : null}
                   </figure>
                 ))}
               </div>
@@ -1218,94 +1346,106 @@ export function PrintPreview({
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: "4px",
-                  marginTop: "2px",
+                  gap: "2.5mm",
+                  marginTop: "2mm",
                 }}
               >
-                {selectedImages.map((item, idx) => (
+                {selectedImages.map((item) => (
                   <figure
                     key={item.id}
                     style={{
                       overflow: "hidden",
                       borderRadius: "4px",
-                      border: "1px solid #cbd5e1",
-                      background: "#f8fafc",
+                      border: "1px solid #94a3b8",
+                      background: "#0f172a",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
                     }}
                   >
                     <img
                       src={item.dataUrl}
-                      alt={item.label || item.filename}
+                      alt={getPrintableMediaLabel(item) || item.filename}
                       style={{
                         width: "100%",
-                        height: "37.5mm",
+                        height: getPrintableMediaLabel(item) ? "46mm" : "49mm",
                         objectFit: "cover",
                         display: "block",
                       }}
                     />
+                    {getPrintableMediaLabel(item) ? (
                     <figcaption
                       style={{
                         background: "#f8fafc",
                         padding: "1.5px 3px",
                         textAlign: "center",
                         fontSize: "7.5px",
-                        fontWeight: 600,
-                        color: "#334155",
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        borderTop: "1px solid #cbd5e1",
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        height: "3mm",
+                        lineHeight: "3mm",
                       }}
                     >
-                      {item.label || `Image ${idx + 1}`}
+                      {getPrintableMediaLabel(item)}
                     </figcaption>
+                    ) : null}
                   </figure>
                 ))}
               </div>
             ) : is12Images ? (
-              /* 12 Images single-page A4 layout - without PROCEDURE IMAGES header */
+              /* 12 Images single-page A4 layout: 3 columns x 4 rows */
               <div
                 className="images-grid-12"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: "5px",
-                  marginTop: "4px",
+                  gap: "3.5mm",
+                  marginTop: "3mm",
                 }}
               >
-                {selectedImages.map((item, idx) => (
+                {selectedImages.map((item) => (
                   <figure
                     key={item.id}
                     style={{
                       overflow: "hidden",
-                      borderRadius: "4px",
-                      border: "1px solid #cbd5e1",
-                      background: "#f8fafc",
+                      borderRadius: "5px",
+                      border: "1px solid #94a3b8",
+                      background: "#0f172a",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
                     }}
                   >
                     <img
                       src={item.dataUrl}
-                      alt={item.label || item.filename}
+                      alt={getPrintableMediaLabel(item) || item.filename}
                       style={{
                         width: "100%",
-                        height: "48mm",
+                        height: getPrintableMediaLabel(item) ? "58mm" : "61.5mm",
                         objectFit: "cover",
                         display: "block",
                       }}
                     />
+                    {getPrintableMediaLabel(item) ? (
                     <figcaption
                       style={{
                         background: "#f8fafc",
                         padding: "2px 4px",
                         textAlign: "center",
                         fontSize: "8px",
-                        fontWeight: 600,
-                        color: "#334155",
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        borderTop: "1px solid #cbd5e1",
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        height: "3.5mm",
+                        lineHeight: "3.5mm",
                       }}
                     >
-                      {item.label || `Image ${idx + 1}`}
+                      {getPrintableMediaLabel(item)}
                     </figcaption>
+                    ) : null}
                   </figure>
                 ))}
               </div>
@@ -1344,7 +1484,7 @@ export function PrintPreview({
                     >
                       <img
                         src={item.dataUrl}
-                        alt={item.label || item.filename}
+                        alt={getPrintableMediaLabel(item) || item.filename}
                         style={{
                           width: "100%",
                           aspectRatio: "1",
@@ -1352,6 +1492,7 @@ export function PrintPreview({
                           display: "block",
                         }}
                       />
+                      {getPrintableMediaLabel(item) ? (
                       <figcaption
                         style={{
                           background: "#f8fafc",
@@ -1362,8 +1503,9 @@ export function PrintPreview({
                           color: "#475569",
                         }}
                       >
-                        {item.label || item.filename}
+                        {getPrintableMediaLabel(item)}
                       </figcaption>
+                      ) : null}
                     </figure>
                   ))}
                 </div>
@@ -1456,18 +1598,19 @@ function InfoCell({ label, value }: { label: string; value: string }) {
       <div
         className="info-cell-label"
         style={{
-          fontSize: "9px",
-          fontWeight: 600,
+          fontSize: "10px",
+          fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: "0.05em",
           color: "#64748b",
+          marginBottom: "2px",
         }}
       >
         {label}
       </div>
       <div
         className="info-cell-value"
-        style={{ fontSize: "11px", fontWeight: 500, color: "#0f172a" }}
+        style={{ fontSize: "12.5px", fontWeight: 600, color: "#0f172a" }}
       >
         {value}
       </div>

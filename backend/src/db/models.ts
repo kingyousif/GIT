@@ -28,7 +28,7 @@ const SessionSchema = new Schema({
   status: { type: String, enum: ['waiting', 'in-progress', 'completed', 'cancelled'], default: 'waiting' },
   indication: { type: String, default: '' },
   preparation: { type: String, default: '' },
-  sedation: { type: String, enum: ['none', 'local', 'conscious', 'general'], default: 'conscious' },
+  sedation: { type: String, default: 'conscious' },
   findings: { type: String, default: '' },
   questionnaireAnswers: { type: Schema.Types.Mixed },
   createdAt: { type: String, default: () => new Date().toISOString() },
@@ -55,6 +55,8 @@ const ReportSchema = new Schema({
   biopsyLocation: String,
   biopsySentTo: String,
   freeReportHtml: String,
+  selectedImages: [String],
+  printMode: String,
   createdAt: { type: String, default: () => new Date().toISOString() },
   updatedAt: { type: String, default: () => new Date().toISOString() },
   status: { type: String, enum: ['draft', 'final'], default: 'draft' },
@@ -65,7 +67,7 @@ ReportSchema.set('toJSON', { virtuals: true, transform: (_doc: any, ret: any) =>
 export const Report = mongoose.model('Report', ReportSchema);
 
 // ===== Template =====
-const TemplateSectionSchema = new Schema({ title: String, defaultContent: String }, { _id: false });
+const TemplateSectionSchema = new Schema({ title: String, defaultContent: String, titleColor: { type: String, default: '#0f172a' } }, { _id: false });
 
 const TemplateSchema = new Schema({
   _id: { type: String, required: true },

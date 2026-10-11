@@ -159,28 +159,32 @@ export const DEFAULT_TEMPLATES: ReportTemplate[] = [
     name: "Upper Endoscopy (EGD) Default",
     procedureType: "upper-endoscopy",
     sections: [
-      { title: "Indication", defaultContent: "Evaluation of [symptom]." },
+      { title: "Indication", defaultContent: "Evaluation of [symptom].", titleColor: "#0f172a" },
       {
         title: "Procedure",
         defaultContent:
           "The procedure was performed with the patient in the left lateral decubitus position. Conscious sedation was administered. The endoscope was introduced through the mouth and advanced under direct visualization to the second part of the duodenum.",
+        titleColor: "#0f172a",
       },
       {
         title: "Esophagus",
         defaultContent:
           "The esophagus was examined. Mucosa appears [normal/abnormal]. Z-line at [X] cm from the incisors.",
+        titleColor: "#0f172a",
       },
       {
         title: "Stomach",
         defaultContent:
           "Adequate gastric preparation. Mucosa of the fundus, body, and antrum appears [normal/erythematous/atrophic]. No ulcers, polyps, or masses seen.",
+        titleColor: "#0f172a",
       },
       {
         title: "Duodenum",
         defaultContent:
           "Duodenal bulb and second part examined. Mucosa appears normal.",
+        titleColor: "#0f172a",
       },
-      { title: "Impression", defaultContent: "[Free text]" },
+      { title: "Impression", defaultContent: "[Free text]", titleColor: "#2563eb" },
     ],
     diagnoses: [
       "Normal study",
@@ -202,24 +206,27 @@ export const DEFAULT_TEMPLATES: ReportTemplate[] = [
       {
         title: "Indication",
         defaultContent: "Evaluation of [symptom] / Screening colonoscopy.",
+        titleColor: "#0f172a",
       },
       {
         title: "Preparation Quality",
         defaultContent:
           "Preparation quality: [Excellent / Good / Fair / Poor] — Boston Bowel Prep Scale: [X].",
+        titleColor: "#0f172a",
       },
       {
         title: "Procedure",
         defaultContent:
           "Colonoscope introduced per anum. Cecum reached and identified by ileocecal valve and appendiceal orifice.",
+        titleColor: "#0f172a",
       },
-      { title: "Cecum", defaultContent: "Normal." },
-      { title: "Ascending Colon", defaultContent: "Normal." },
-      { title: "Transverse Colon", defaultContent: "Normal." },
-      { title: "Descending Colon", defaultContent: "Normal." },
-      { title: "Sigmoid Colon", defaultContent: "Normal." },
-      { title: "Rectum", defaultContent: "Normal." },
-      { title: "Impression", defaultContent: "[Free text]" },
+      { title: "Cecum", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Ascending Colon", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Transverse Colon", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Descending Colon", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Sigmoid Colon", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Rectum", defaultContent: "Normal.", titleColor: "#0f172a" },
+      { title: "Impression", defaultContent: "[Free text]", titleColor: "#2563eb" },
     ],
     diagnoses: [
       "Normal colonoscopy",

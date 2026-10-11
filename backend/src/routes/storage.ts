@@ -98,6 +98,8 @@ function reportFields(body: any, id?: string) {
     biopsyLocation: body.biopsyLocation,
     biopsySentTo: body.biopsySentTo,
     freeReportHtml: body.freeReportHtml,
+    selectedImages: Array.isArray(body.selectedImages) ? body.selectedImages : (body.selectedImages ? [body.selectedImages] : []),
+    printMode: body.printMode || undefined,
     createdAt: body.createdAt,
     updatedAt: body.updatedAt,
     status: body.status,

@@ -279,12 +279,35 @@ export function NewPatientForm() {
                 control={control}
                 name="sedation"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectItem value="none">{t.newPatient.sedationNone}</SelectItem>
-                    <SelectItem value="local">{t.newPatient.sedationLocal}</SelectItem>
-                    <SelectItem value="conscious">{t.newPatient.sedationConscious}</SelectItem>
-                    <SelectItem value="general">{t.newPatient.sedationGeneral}</SelectItem>
-                  </Select>
+                  <div className="space-y-1.5">
+                    <Select
+                      value={
+                        ['none', 'local', 'conscious', 'general', 'Propofol', 'Midazolam', 'Midazolam + Fentanyl', 'Propofol + Fentanyl'].includes(field.value ?? '')
+                          ? field.value
+                          : 'custom'
+                      }
+                      onValueChange={(val) => {
+                        if (val !== 'custom') {
+                          field.onChange(val);
+                        }
+                      }}
+                    >
+                      <SelectItem value="none">{t.newPatient.sedationNone}</SelectItem>
+                      <SelectItem value="conscious">{t.newPatient.sedationConscious}</SelectItem>
+                      <SelectItem value="local">{t.newPatient.sedationLocal}</SelectItem>
+                      <SelectItem value="general">{t.newPatient.sedationGeneral}</SelectItem>
+                      <SelectItem value="Propofol">Propofol</SelectItem>
+                      <SelectItem value="Midazolam">Midazolam</SelectItem>
+                      <SelectItem value="Midazolam + Fentanyl">Midazolam + Fentanyl</SelectItem>
+                      <SelectItem value="Propofol + Fentanyl">Propofol + Fentanyl</SelectItem>
+                      <SelectItem value="custom">Other / Custom Medication...</SelectItem>
+                    </Select>
+                    <Input
+                      placeholder="Medication name (e.g. Propofol, Midazolam...)"
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(e.target.value)}
+                    />
+                  </div>
                 )}
               />
             </div>

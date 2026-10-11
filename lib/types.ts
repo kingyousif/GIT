@@ -75,6 +75,8 @@ export interface Report {
   biopsyLocation?: string;
   biopsySentTo?: string;
   freeReportHtml?: string;
+  selectedImages?: string[];
+  printMode?: string;
   createdAt: string;
   updatedAt: string;
   status: 'draft' | 'final';
@@ -89,7 +91,7 @@ export interface ProcedureSession {
   status: 'waiting' | 'in-progress' | 'completed' | 'cancelled';
   indication: string;
   preparation: string;
-  sedation: 'none' | 'local' | 'conscious' | 'general';
+  sedation: string;
   findings: string;
   mediaFiles: MediaFile[];
   report?: Report;
@@ -102,7 +104,7 @@ export interface ReportTemplate {
   id: string;
   name: string;
   procedureType: ProcedureType;
-  sections: { title: string; defaultContent: string }[];
+  sections: { title: string; defaultContent: string; titleColor?: string }[];
   diagnoses: string[];
 }
 
@@ -143,7 +145,7 @@ export interface PatientRegistrationFormValues {
   scheduledAt: string;
   indication: string;
   preparation: string;
-  sedation: 'none' | 'local' | 'conscious' | 'general';
+  sedation: string;
 }
 
 export interface PatientSessionJoined {
