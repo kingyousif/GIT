@@ -54,7 +54,7 @@ import {
   ensureJoinedSession,
 } from "@/lib/queries";
 import { getMediaForSessionAsync, deleteMediaItemAsync } from "@/lib/media-db";
-import { formatAge, formatDateTime, formatSedation, getProcedureLabel, toDatetimeLocalValue } from "@/lib/utils";
+import { formatAge, formatDateTime, formatSedation, getProcedureLabel, isSameProcedureType, toDatetimeLocalValue } from "@/lib/utils";
 import { formatDateOfBirth } from "@/lib/age";
 import { BirthDateAgeFields } from "@/components/patients/birth-date-age-fields";
 import {
@@ -799,7 +799,11 @@ export function PatientSessionPage() {
             </Field>
             <Field label={t.newPatient.procedureType}>
               <Select
-                value={String(editValues.procedureType ?? "upper-endoscopy")}
+                value={
+                  settings.procedures.find((p) =>
+                    isSameProcedureType(p.id, String(editValues.procedureType ?? ""), settings.procedures),
+                  )?.id ?? String(editValues.procedureType ?? "")
+                }
                 onValueChange={(value) =>
                   setEditValues((prev) => ({
                     ...prev,
@@ -934,7 +938,11 @@ export function PatientSessionPage() {
             <div className="space-y-2">
               <Label>{t.newPatient.procedureType}</Label>
               <Select
-                value={newVisitValues.procedureType}
+                value={
+                  settings.procedures.find((p) =>
+                    isSameProcedureType(p.id, newVisitValues.procedureType, settings.procedures),
+                  )?.id ?? newVisitValues.procedureType
+                }
                 onValueChange={(v) =>
                   setNewVisitValues((p) => ({ ...p, procedureType: v }))
                 }

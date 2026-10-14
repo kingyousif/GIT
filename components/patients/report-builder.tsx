@@ -47,10 +47,13 @@ import {
   createTextReportCopy,
   formatDateTime,
   formatRecommendationHtml,
+  getDiagnosisSuggestions,
   getProcedureLabel,
+  isSameProcedureType,
   parseRecommendation,
 } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
+import { useAppState } from "@/components/app-provider";
 import { saveReportSnapshot } from "@/lib/report-snapshot";
 
 const SECTION_TITLE_COLORS = [
@@ -106,6 +109,31 @@ interface ReportFormValues {
   status: "draft" | "final";
 }
 
+function isGenericDefaultSections(sections?: { title: string; content: string }[]) {
+  if (!sections || sections.length === 0) return true;
+  if (sections.length !== 4) return false;
+  const titles = sections.map((s) => s.title.toLowerCase().trim());
+  const expected = ["indication", "procedure description", "findings", "impressions/diagnosis"];
+  const matches = expected.every((exp) => titles.includes(exp));
+  if (!matches) return false;
+  const hasUserText = sections.some((s) => {
+    const clean = s.content.replace(/<[^>]*>/g, "").trim();
+    if (!clean) return false;
+    if (clean === "Procedure performed as per standard protocol.") return false;
+    if (clean === "Procedure indication not recorded.") return false;
+    return true;
+  });
+  return !hasUserText;
+}
+
+function buildTemplateSections(template: ReportTemplate) {
+  return template.sections.map((s) => ({
+    title: s.title,
+    content: s.defaultContent || "",
+    titleColor: s.titleColor || "#0f172a",
+  }));
+}
+
 function buildDefaultSections(session: ProcedureSession) {
   return [
     {
@@ -130,7 +158,42 @@ function buildDefaultSections(session: ProcedureSession) {
 function buildInitialValues(
   session: ProcedureSession,
   report?: Report | null,
+  fallbackTemplate?: ReportTemplate | null,
 ): ReportFormValues {
+  const hasCustomContent =
+    report?.sections?.length &&
+    (report.templateUsed || !isGenericDefaultSections(report.sections));
+
+  if (hasCustomContent && report) {
+    return {
+      doctorName: report.doctorName ?? session.doctorName,
+      templateUsed: report.templateUsed,
+      sections: report.sections,
+      diagnosis: report.diagnosis ?? [],
+      recommendations: report.recommendations ?? [],
+      followUp: report.followUp ?? "",
+      biopsy: report.biopsy ?? false,
+      biopsyLocation: report.biopsyLocation ?? "",
+      biopsySentTo: report.biopsySentTo ?? "",
+      status: report.status ?? "draft",
+    };
+  }
+
+  if (fallbackTemplate) {
+    return {
+      doctorName: report?.doctorName ?? session.doctorName,
+      templateUsed: fallbackTemplate.id,
+      sections: buildTemplateSections(fallbackTemplate),
+      diagnosis: report?.diagnosis?.length ? report.diagnosis : fallbackTemplate.diagnoses ?? [],
+      recommendations: report?.recommendations ?? [],
+      followUp: report?.followUp ?? "",
+      biopsy: report?.biopsy ?? false,
+      biopsyLocation: report?.biopsyLocation ?? "",
+      biopsySentTo: report?.biopsySentTo ?? "",
+      status: report?.status ?? "draft",
+    };
+  }
+
   return {
     doctorName: report?.doctorName ?? session.doctorName,
     templateUsed: report?.templateUsed,
@@ -151,7 +214,7 @@ export function ReportBuilder({
   patient,
   session,
   report,
-  settings,
+  settings: propSettings,
   onAfterSave,
   onOpenPrint,
 }: {
@@ -163,20 +226,29 @@ export function ReportBuilder({
   onOpenPrint?: (saved: Report) => void | Promise<void>;
 }) {
   const { t } = useLocale();
+  const { dataVersion, settings: appSettings } = useAppState();
+  const settings = propSettings || appSettings;
+
+  const allTemplates = useMemo(() => getTemplates(), [dataVersion]);
+
+  const matchingTemplates = useMemo(
+    () =>
+      allTemplates.filter((item) =>
+        isSameProcedureType(item.procedureType, session.procedureType, settings?.procedures),
+      ),
+    [allTemplates, session.procedureType, settings?.procedures],
+  );
+
+  const displayTemplates = matchingTemplates.length > 0 ? matchingTemplates : allTemplates;
+  const primaryTemplate = matchingTemplates[0] || allTemplates[0] || null;
+
   const persistedReportRef = useRef<Report | null>(report ?? null);
   const currentReportIdRef = useRef<string | undefined>(report?.id);
   const lastSavedJsonRef = useRef<string>(
-    JSON.stringify(buildInitialValues(session, report)),
+    JSON.stringify(buildInitialValues(session, report, primaryTemplate)),
   );
   const [lastAutoSavedAt, setLastAutoSavedAt] = useState<Date | null>(null);
 
-  const templates = useMemo(
-    () =>
-      getTemplates().filter(
-        (item) => item.procedureType === session.procedureType,
-      ),
-    [session.procedureType],
-  );
   const [customDiagnosis, setCustomDiagnosis] = useState("");
   const [customRecommendation, setCustomRecommendation] = useState("");
   const [recBold, setRecBold] = useState(false);
@@ -190,7 +262,7 @@ export function ReportBuilder({
 
   const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportSchema),
-    defaultValues: buildInitialValues(session, report),
+    defaultValues: buildInitialValues(session, report, primaryTemplate),
   });
   const {
     register,
@@ -209,12 +281,11 @@ export function ReportBuilder({
     if (report?.id !== currentReportIdRef.current) {
       currentReportIdRef.current = report?.id;
       persistedReportRef.current = report ?? null;
-      reset(buildInitialValues(session, report));
-      lastSavedJsonRef.current = JSON.stringify(
-        buildInitialValues(session, report),
-      );
+      const initial = buildInitialValues(session, report, primaryTemplate);
+      reset(initial);
+      lastSavedJsonRef.current = JSON.stringify(initial);
     }
-  }, [report?.id, reset, session]);
+  }, [report?.id, reset, session, primaryTemplate]);
 
   const selectedTemplateId = watch("templateUsed");
   const diagnoses = watch("diagnosis");
@@ -223,27 +294,38 @@ export function ReportBuilder({
   const isLocked = watch("status") === "final";
 
   const quickDiagnosis = useMemo(() => {
-    const template = templates.find((item) => item.id === selectedTemplateId);
+    const template =
+      allTemplates.find((item) => item.id === selectedTemplateId) ||
+      primaryTemplate;
     const fromTemplate = template?.diagnoses ?? [];
     return Array.from(
       new Set([
         ...fromTemplate,
-        ...(DIAGNOSIS_SUGGESTIONS[session.procedureType] ?? []),
+        ...getDiagnosisSuggestions(session.procedureType),
       ]),
     );
-  }, [selectedTemplateId, session.procedureType, templates]);
+  }, [allTemplates, selectedTemplateId, primaryTemplate, session.procedureType]);
 
   const applyTemplate = (templateId: string) => {
-    const template = templates.find((item) => item.id === templateId);
+    if (!templateId) {
+      setValue("templateUsed", "", { shouldDirty: true });
+      return;
+    }
+    const template = allTemplates.find((item) => item.id === templateId);
     if (!template) return;
     replace(
       template.sections.map((section) => ({
         title: section.title,
-        content: section.defaultContent,
+        content: section.defaultContent || "",
         titleColor: section.titleColor || "#0f172a",
       })),
     );
     setValue("templateUsed", templateId, { shouldDirty: true });
+    if (template.diagnoses && template.diagnoses.length > 0) {
+      const current = getValues("diagnosis") || [];
+      const merged = Array.from(new Set([...current, ...template.diagnoses]));
+      setValue("diagnosis", merged, { shouldDirty: true });
+    }
     toast.success(`Applied template: ${template.name}`);
   };
 
@@ -403,7 +485,14 @@ export function ReportBuilder({
         <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2 md:col-span-2">
-              <Label>{t.reportBuilder.templateSelector}</Label>
+              <div className="flex items-center justify-between">
+                <Label>{t.reportBuilder.templateSelector}</Label>
+                {selectedTemplateId && (
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Active: {allTemplates.find((t) => t.id === selectedTemplateId)?.name ?? selectedTemplateId}
+                  </span>
+                )}
+              </div>
               <Select
                 value={selectedTemplateId || ""}
                 onValueChange={applyTemplate}
@@ -412,11 +501,18 @@ export function ReportBuilder({
                 <SelectItem value="">
                   {t.reportBuilder.selectTemplate}
                 </SelectItem>
-                {templates.map((template) => (
+                {matchingTemplates.map((template) => (
                   <SelectItem key={template.id} value={template.id}>
                     {template.name}
                   </SelectItem>
                 ))}
+                {allTemplates
+                  .filter((t) => !matchingTemplates.some((m) => m.id === t.id))
+                  .map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name} ({getProcedureLabel(template.procedureType)})
+                    </SelectItem>
+                  ))}
               </Select>
             </div>
             <div className="space-y-2">

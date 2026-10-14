@@ -2,7 +2,7 @@ import { format, isSameDay, parseISO } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AppSettings, ProcedureType } from '@/lib/types';
-import { PROCEDURE_LABELS, STATUS_META, STORAGE_KEYS } from '@/lib/constants';
+import { DIAGNOSIS_SUGGESTIONS, PROCEDURE_LABELS, STATUS_META, STORAGE_KEYS } from '@/lib/constants';
 import { getStorage } from '@/lib/storage';
 
 export function cn(...inputs: ClassValue[]) {
@@ -29,13 +29,110 @@ export function isTodayIso(value: string) {
   }
 }
 
+/**
+ * Normalizes a procedure type string or slug.
+ * Equates medical synonyms and common variations (OGD, EGD, Upper Endoscopy, Gastroscopy).
+ */
+export function normalizeProcedureType(type?: string): string {
+  if (!type) return '';
+  const trimmed = String(type).trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+  // Upper GI endoscopy synonyms
+  if (
+    trimmed === 'ogd' ||
+    trimmed === 'egd' ||
+    trimmed === 'upper-endoscopy' ||
+    trimmed === 'gastroscopy' ||
+    trimmed === 'upper-gi-endoscopy' ||
+    trimmed.includes('ogd') ||
+    trimmed.includes('egd') ||
+    trimmed.includes('upper-endoscopy')
+  ) {
+    return 'upper-endoscopy';
+  }
+
+  // Colonoscopy synonyms
+  if (trimmed === 'colon' || trimmed === 'colonoscopy' || trimmed.includes('colonoscopy')) {
+    return 'colonoscopy';
+  }
+
+  // Sigmoidoscopy synonyms
+  if (trimmed === 'sigmoidoscopy' || trimmed === 'flexible-sigmoidoscopy' || trimmed.includes('sigmoidoscopy')) {
+    return 'sigmoidoscopy';
+  }
+
+  // ERCP synonyms
+  if (trimmed === 'ercp' || trimmed.includes('ercp')) {
+    return 'ercp';
+  }
+
+  // Bronchoscopy synonyms
+  if (trimmed === 'bronchoscopy' || trimmed === 'broncho' || trimmed.includes('bronchoscopy')) {
+    return 'bronchoscopy';
+  }
+
+  // Capsule endoscopy synonyms
+  if (trimmed === 'capsule' || trimmed === 'capsule-endoscopy' || trimmed.includes('capsule')) {
+    return 'capsule-endoscopy';
+  }
+
+  return trimmed;
+}
+
+/**
+ * Compares two procedure types/IDs/labels for equivalence.
+ * Matches case-insensitively, slug-wise, synonym-wise (e.g. OGD == Upper-Endoscopy == EGD),
+ * and checks against procedure definitions in settings if available.
+ */
+export function isSameProcedureType(
+  a?: string,
+  b?: string,
+  proceduresList?: { id: string; label?: string }[]
+): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.toLowerCase() === b.toLowerCase()) return true;
+
+  const normA = normalizeProcedureType(a);
+  const normB = normalizeProcedureType(b);
+  if (normA && normB && normA === normB) return true;
+
+  const list =
+    proceduresList ??
+    (typeof window !== 'undefined'
+      ? getStorage<AppSettings>(STORAGE_KEYS.settings)?.procedures
+      : undefined);
+
+  if (list && list.length > 0) {
+    const matchA = list.find((p) => p.id === a || p.label === a || isSameProcedureType(p.id, a) || isSameProcedureType(p.label, a));
+    const matchB = list.find((p) => p.id === b || p.label === b || isSameProcedureType(p.id, b) || isSameProcedureType(p.label, b));
+    if (matchA && matchB && matchA.id === matchB.id) return true;
+  }
+
+  return false;
+}
+
 export function getProcedureLabel(type: ProcedureType) {
+  if (!type) return '';
   if (typeof window !== 'undefined') {
     const settings = getStorage<AppSettings>(STORAGE_KEYS.settings);
-    const found = settings?.procedures?.find((p) => p.id === type);
+    const found = settings?.procedures?.find(
+      (p) => isSameProcedureType(p.id, type) || isSameProcedureType(p.label, type)
+    );
     if (found?.label) return found.label;
   }
+  for (const [key, label] of Object.entries(PROCEDURE_LABELS)) {
+    if (isSameProcedureType(key, type)) return label;
+  }
   return PROCEDURE_LABELS[type] ?? type.replace(/-/g, ' ');
+}
+
+export function getDiagnosisSuggestions(type?: string): string[] {
+  if (!type) return [];
+  for (const [key, list] of Object.entries(DIAGNOSIS_SUGGESTIONS)) {
+    if (isSameProcedureType(key, type)) return list;
+  }
+  return [];
 }
 
 export function formatSedation(sedation?: string): string {

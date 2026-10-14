@@ -16,7 +16,7 @@ import { LoadingTable } from '@/components/shared/loading-skeleton';
 import { useAppState } from '@/components/app-provider';
 import { getPatients, getSessions, getReportsForSession } from '@/lib/queries';
 import { Patient, ProcedureSession } from '@/lib/types';
-import { formatAge, formatDateTime, getProcedureLabel } from '@/lib/utils';
+import { formatAge, formatDateTime, getProcedureLabel, isSameProcedureType } from '@/lib/utils';
 import { useLocale } from '@/hooks/use-locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
@@ -94,7 +94,7 @@ export function PatientsTablePage() {
       
       const matchesProcedure =
         procedureType === 'all' ||
-        item.sessions.some((s) => s.procedureType === procedureType);
+        item.sessions.some((s) => isSameProcedureType(s.procedureType, procedureType, settings?.procedures));
         
       const matchesStatus =
         status === 'all' ||

@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { useAppState } from '@/components/app-provider';
 import { exportAllData, getJoinedSessions, getReports } from '@/lib/queries';
-import { downloadJson, formatDateTime, getProcedureLabel } from '@/lib/utils';
+import { downloadJson, formatDateTime, getProcedureLabel, isSameProcedureType } from '@/lib/utils';
 import { useLocale } from '@/hooks/use-locale';
 
 export function ReportsArchive() {
@@ -47,7 +47,7 @@ export function ReportsArchive() {
       const diagnosisText = item.report?.diagnosis.join(' ').toLowerCase() ?? '';
       const matchesSearch = !term || item.patient.fullName.toLowerCase().includes(term) || diagnosisText.includes(term);
       const matchesDoctor = doctor === 'all' || item.session.doctorName === doctor;
-      const matchesProcedure = procedure === 'all' || item.session.procedureType === procedure;
+      const matchesProcedure = procedure === 'all' || isSameProcedureType(item.session.procedureType, procedure, settings?.procedures);
       const matchesStatus = status === 'all' || item.report?.status === status;
       const date = new Date(item.session.scheduledAt);
       const matchesFrom = !fromDate || date >= new Date(fromDate);

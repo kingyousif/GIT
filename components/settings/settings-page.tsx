@@ -47,7 +47,7 @@ import {
   ProcedureType,
   ReportTemplate,
 } from "@/lib/types";
-import { cn, downloadJson, fileToDataUrl, safeJsonParse } from "@/lib/utils";
+import { cn, downloadJson, fileToDataUrl, getProcedureLabel, isSameProcedureType, safeJsonParse } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 
 const SECTION_TITLE_COLORS = [
@@ -135,10 +135,13 @@ export function SettingsPageContent() {
   };
 
   const openEditTemplate = (template: ReportTemplate) => {
+    const matchedProc = settings?.procedures.find((p) =>
+      isSameProcedureType(p.id, template.procedureType, settings.procedures),
+    );
     setTemplateDraft({
       id: template.id,
       name: template.name,
-      procedureType: template.procedureType,
+      procedureType: (matchedProc?.id as ProcedureType) ?? template.procedureType,
       sections: template.sections.map((s) => ({
         title: s.title,
         defaultContent: s.defaultContent,
@@ -181,10 +184,11 @@ export function SettingsPageContent() {
 
   const templateCounts = useMemo(() => {
     return templates.reduce<Record<string, number>>((acc, template) => {
-      acc[template.procedureType] = (acc[template.procedureType] ?? 0) + 1;
+      const label = getProcedureLabel(template.procedureType);
+      acc[label] = (acc[label] ?? 0) + 1;
       return acc;
     }, {});
-  }, [templates]);
+  }, [templates, settings]);
 
   if (!settings) return null;
 
@@ -482,7 +486,7 @@ export function SettingsPageContent() {
                           {template.name}
                         </h3>
                         <p className="text-sm capitalize text-muted-foreground">
-                          {template.procedureType.replace(/-/g, " ")}
+                          {getProcedureLabel(template.procedureType)}
                         </p>
                       </div>
                       <div className="flex gap-2">
